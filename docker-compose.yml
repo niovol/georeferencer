@@ -1,0 +1,11 @@
+services:
+  fastapi-app:
+    container_name: nikolove18_fastapi
+    image: fastapi
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    command: uvicorn src.api.server:api_app --reload --host 0.0.0.0
+    volumes:
+      - .:/app
+    shm_size: '2gb'

@@ -1,0 +1,16 @@
+albumentations
+fastapi
+geopandas
+matplotlib
+numpy
+opencv-python
+opencv-contrib-python
+pandas
+pydantic
+python-dotenv
+pytorch-lightning
+rasterio
+torch
+torchvision
+tqdm
+uvicorn
