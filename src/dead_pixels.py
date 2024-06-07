@@ -2,16 +2,23 @@
 dead_pixels.py
 """
 
-import os
-
 import numpy as np
 from scipy.ndimage.filters import maximum_filter, minimum_filter
 from sklearn.linear_model import LinearRegression
 
-from .utils import load_geotiff, save_geotiff
-
 
 def compute_local_min_max_exclude_center(image):
+    """
+    Compute the local minimum and maximum values for each pixel in the image,
+    excluding the center pixel.
+
+    Args:
+        image (np.ndarray): The input image with shape (height, width, channels).
+
+    Returns:
+        local_mins (np.ndarray): Local minimum values, shape the same as for the input.
+        local_maxs (np.ndarray): Local maximum values, shape the same as for the input.
+    """
     kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
 
     local_mins = np.zeros_like(image)
@@ -27,6 +34,18 @@ def compute_local_min_max_exclude_center(image):
 
 
 def identify_dead_pixels(image, local_mins, local_maxs):
+    """
+    Identify dead pixels in the image based on local minima and maxima.
+
+    Args:
+        image (np.ndarray): The input image with shape (height, width, channels).
+        local_mins (np.ndarray): Local minimum values for each pixel.
+        local_maxs (np.ndarray): Local maximum values for each pixel.
+
+    Returns:
+        dead_pixels (np.ndarray): Array of coordinates of dead pixels.
+        dead_mask (np.ndarray): Boolean mask of dead pixels.
+    """
     image_mean = image.mean(axis=(0, 1))
 
     zero_pixels = image == 0
@@ -40,6 +59,18 @@ def identify_dead_pixels(image, local_mins, local_maxs):
 
 
 def interpolate_dead_pixel(image, row, col, channel):
+    """
+    Interpolate the value of a dead pixel based on its non-zero neighbors.
+
+    Args:
+        image (np.ndarray): The input image with shape (height, width, channels).
+        row (int): Row index of the dead pixel.
+        col (int): Column index of the dead pixel.
+        channel (int): Channel index of the dead pixel.
+
+    Returns:
+        int: The interpolated value of the dead pixel.
+    """
     original_value = image[row, col, channel]
 
     neighborhood = image[max(0, row - 1) : row + 2, max(0, col - 1) : col + 2, channel]
@@ -56,6 +87,21 @@ def interpolate_dead_pixel(image, row, col, channel):
 
 
 def local_regression(image, row, col, channel, dead_mask, window_size=9):
+    """
+    Perform local regression to estimate the value of a dead pixel.
+
+    Args:
+        image (np.ndarray): The input image with shape (height, width, channels).
+        row (int): Row index of the dead pixel.
+        col (int): Column index of the dead pixel.
+        channel (int): Channel index of the dead pixel.
+        dead_mask (np.ndarray): Boolean mask of dead pixels.
+        window_size (int): Size of the window for local regression.
+
+    Returns:
+        int: The estimated value of the dead pixel,
+             or None if regression is not possible.
+    """
     half_window = window_size // 2
     row_start = max(0, row - half_window)
     row_end = min(image.shape[0], row + half_window + 1)
@@ -83,6 +129,17 @@ def local_regression(image, row, col, channel, dead_mask, window_size=9):
 
 
 def correct_dead_pixels(image, window_size=9):
+    """
+    Correct dead pixels in the image using local regression and interpolation.
+
+    Args:
+        image (np.ndarray): The input image with shape (height, width, channels).
+        window_size (int): Size of the window for local regression.
+
+    Returns:
+        corrected_image (np.ndarray): The image with dead pixels corrected.
+        bug_report (list): A list of strings describing the corrections made.
+    """
     local_mins, local_maxs = compute_local_min_max_exclude_center(image)
     dead_pixels, dead_mask = identify_dead_pixels(image, local_mins, local_maxs)
 
@@ -105,22 +162,3 @@ def correct_dead_pixels(image, window_size=9):
         )
 
     return corrected_image, bug_report
-
-
-def process_folder(input_folder, output_folder):
-    os.makedirs(output_folder, exist_ok=True)
-
-    for file_name in os.listdir(input_folder):
-        if file_name.endswith(".tif"):
-            file_path = os.path.join(input_folder, file_name)
-            loaded_crop = load_geotiff(file_path, layout="hwc")
-
-            corrected_img, bug_report = correct_dead_pixels(loaded_crop["data"])
-            output_path = os.path.join(output_folder, file_name)
-            save_geotiff(output_path, corrected_img, loaded_crop["meta"], layout="hwc")
-
-            bug_report_path = os.path.join(
-                output_folder, file_name.replace(".tif", "_bug_report.txt")
-            )
-            with open(bug_report_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(bug_report))

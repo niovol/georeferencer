@@ -2,26 +2,12 @@
 georef.py
 """
 
-import os
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from affine import Affine
 
-from .utils import load_geotiff, save_geotiff
-
-
-def scale_image_percentile(image, low_percentile=2, high_percentile=98):
-    """
-    Scale the image based on the 2nd and 98th percentiles, excluding zero values.
-    """
-    non_zero_values = image[image > 0]
-    low, high = np.percentile(non_zero_values, [low_percentile, high_percentile])
-    scaled_image = np.clip((image - low) / (high - low) * 254 + 1, 1, 255).astype(
-        "uint8"
-    )
-    return scaled_image
+from .utils import scale_image_percentile
 
 
 def match_features(descriptors1, descriptors2, method="SIFT"):
@@ -61,6 +47,17 @@ def match_features(descriptors1, descriptors2, method="SIFT"):
 
 
 def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
+    """
+    Detects keypoints and computes descriptors for the given image.
+
+    Args:
+        image (numpy.ndarray): Input image.
+        detector_type (str): The type of feature detector to use ('SIFT' or 'ORB').
+        draw (bool): Whether to draw and display the keypoints on the image.
+
+    Returns:
+        tuple: Lists of keypoints and descriptors for each channel.
+    """
     if detector_type == "SIFT":
         feature_detector = cv2.SIFT_create()
     elif detector_type == "ORB":
@@ -95,6 +92,20 @@ def compute_transformation(
     transformation_type="homography",
     method="SIFT",
 ):
+    """
+    Computes the transformation matrix to align the scene.
+
+    Args:
+        scene_image (numpy.ndarray): The image to be transformed.
+        keypoints_list_substrate (list): List of keypoints from the substrate image.
+        descriptors_list_substrate (list): List of descriptors from the substrate image.
+        transformation_type (str): The type of transformation
+            ('homography', 'affine', or 'affine_partial').
+        method (str): The feature extraction method used ('SIFT' or 'ORB').
+
+    Returns:
+        numpy.ndarray: The transformation matrix.
+    """
     keypoints_list_scene, descriptors_list_scene = detect_keypoints_and_descriptors(
         scene_image, method
     )
@@ -130,22 +141,53 @@ def compute_transformation(
             ransacReprojThreshold=5.0,
         )
     else:
-        raise ValueError("transformation_type must be either 'homography' or 'affine'")
+        raise ValueError(
+            "transformation_type must be either "
+            "'homography', 'affine' or 'affine_partial'"
+        )
 
     return transf_matrix
 
 
 def convert_affine_to_numpy(affine: Affine):
+    """
+    Converts an Affine object to a NumPy array.
+
+    Args:
+        affine (Affine): An Affine transformation object.
+
+    Returns:
+        numpy.ndarray: A 2x3 NumPy array representing the affine transformation.
+    """
     return np.array([[affine.a, affine.b, affine.c], [affine.d, affine.e, affine.f]])
 
 
 def convert_numpy_to_affine(array):
+    """
+    Converts a NumPy array to an Affine object.
+
+    Args:
+        array (numpy.ndarray): A 2x3 NumPy array representing the affine transformation.
+
+    Returns:
+        Affine: An Affine transformation object.
+    """
     return Affine(
         array[0, 0], array[0, 1], array[0, 2], array[1, 0], array[1, 1], array[1, 2]
     )
 
 
 def multiply_affine_arrays(array1, array2):
+    """
+    Multiplies two affine transformation arrays.
+
+    Args:
+        array1 (numpy.ndarray): The first affine transformation array.
+        array2 (numpy.ndarray): The second affine transformation array.
+
+    Returns:
+        numpy.ndarray: The result of multiplying the two affine transformation arrays.
+    """
     array1_3x3 = np.vstack([array1, [0, 0, 1]])
     array2_3x3 = np.vstack([array2, [0, 0, 1]])
     mult = np.dot(array2_3x3, array1_3x3)
@@ -153,6 +195,18 @@ def multiply_affine_arrays(array1, array2):
 
 
 def align(layout_keypoints, layout_descriptors, layout_meta, crop_image):
+    """
+    Aligns a cropped image to a layout using keypoints and descriptors.
+
+    Args:
+        layout_keypoints (list): List of keypoints from the layout.
+        layout_descriptors (list): List of descriptors from the layout.
+        layout_meta (dict): Metadata of the layout, including the affine transformation.
+        crop_image (numpy.ndarray): The cropped image to be aligned.
+
+    Returns:
+        dict: A dictionary containing the new corners and updated metadata.
+    """
     transf_matrix = compute_transformation(
         crop_image,
         layout_keypoints,
@@ -177,24 +231,3 @@ def align(layout_keypoints, layout_descriptors, layout_meta, crop_image):
     new_meta["height"] = h
 
     return {"corners": new_corners, "meta": new_meta}
-
-
-def process_folder(
-    input_folder, output_folder, layout_keypoints, layout_descriptors, layout_meta
-):
-    os.makedirs(output_folder, exist_ok=True)
-
-    for file_name in os.listdir(input_folder):
-        if file_name.endswith(".tif"):
-            print(file_name)
-            scene_image_path = os.path.join(input_folder, file_name)
-            output_path = os.path.join(output_folder, file_name)
-
-            crop_loaded = load_geotiff(scene_image_path, layout="hwc")
-            crop_image, _ = crop_loaded["data"], crop_loaded["meta"]
-
-            aligned = align(
-                layout_keypoints, layout_descriptors, layout_meta, crop_image
-            )
-
-            save_geotiff(output_path, crop_image, aligned["meta"], layout="hwc")

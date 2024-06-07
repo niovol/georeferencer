@@ -11,6 +11,26 @@ import rasterio.features
 import rasterio.windows
 
 
+def scale_image_percentile(image, low_percentile=2, high_percentile=98):
+    """
+    Scale the image based on the 2nd and 98th percentiles, excluding zero values.
+
+    Args:
+        image (numpy.ndarray): Input image.
+        low_percentile (int): Lower percentile for scaling.
+        high_percentile (int): Upper percentile for scaling.
+
+    Returns:
+        numpy.ndarray: Scaled image.
+    """
+    non_zero_values = image[image > 0]
+    low, high = np.percentile(non_zero_values, [low_percentile, high_percentile])
+    scaled_image = np.clip((image - low) / (high - low) * 254 + 1, 1, 255).astype(
+        "uint8"
+    )
+    return scaled_image
+
+
 def _validate_input_file(input_file: str) -> None:
     """
     Validate the input file path and extension.
