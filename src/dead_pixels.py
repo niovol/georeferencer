@@ -8,7 +8,7 @@ import numpy as np
 from scipy.ndimage.filters import maximum_filter, minimum_filter
 from sklearn.linear_model import LinearRegression
 
-from utils import load_geotiff, save_geotiff
+from .utils import load_geotiff, save_geotiff
 
 
 def compute_local_min_max_exclude_center(image):

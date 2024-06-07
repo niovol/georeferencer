@@ -7,9 +7,9 @@ import argparse
 import csv
 from datetime import datetime
 
-from dead_pixels import correct_dead_pixels
-from georef import align, detect_keypoints_and_descriptors
-from utils import load_geotiff, save_geotiff
+from .dead_pixels import correct_dead_pixels
+from .georef import align, detect_keypoints_and_descriptors
+from .utils import load_geotiff, save_geotiff
 
 
 def load_layout(layout_name):

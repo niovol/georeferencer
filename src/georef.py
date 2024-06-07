@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from affine import Affine
 
-from utils import load_geotiff, save_geotiff
+from .utils import load_geotiff, save_geotiff
 
 
 def scale_image_percentile(image, low_percentile=2, high_percentile=98):
