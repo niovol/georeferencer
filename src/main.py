@@ -102,7 +102,7 @@ def main(layout_name, crop_name):
     """
     layout = load_layout(layout_name)
     result = process(layout, crop_name)
-    coordinates = result["corners"]
+    coords = result["corners"]
 
     with open("coords.csv", "w", newline="", encoding="utf-8") as csvfile:
         fieldnames = [
@@ -122,10 +122,10 @@ def main(layout_name, crop_name):
             {
                 "layout_name": layout_name,
                 "crop_name": crop_name,
-                "ul": f"{coordinates[0][0]}; {coordinates[0][1]}",
-                "ur": f"{coordinates[1][0]}; {coordinates[1][1]}",
-                "br": f"{coordinates[2][0]}; {coordinates[2][1]}",
-                "bl": f"{coordinates[3][0]}; {coordinates[3][1]}",
+                "ul": f"{coords[0][0]}; {coords[0][1]}",
+                "ur": f"{coords[1][0]}; {coords[1][1]}",
+                "br": f"{coords[2][0]}; {coords[2][1]}",
+                "bl": f"{coords[3][0]}; {coords[3][1]}",
                 "crs": "EPSG:32637",
                 "start": result["start"].strftime("%Y-%m-%dT%H:%M:%S"),
                 "end": result["end"].strftime("%Y-%m-%dT%H:%M:%S"),

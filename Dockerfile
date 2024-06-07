@@ -5,11 +5,7 @@ WORKDIR /app
 COPY requirements.txt /tmp
 RUN apt update && \
     apt install -y \
-    gdal-bin \
-    libgdal-dev \
-    libgl1-mesa-glx \
-    python3-gdal \
+    libgl1-mesa-glx && \
     pip install --no-cache-dir -r /tmp/requirements.txt && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
-    chmod +x /usr/local/bin/entrypoint.sh
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 EXPOSE 8000

@@ -5,7 +5,7 @@ schemas.py
 from pydantic import BaseModel  # pylint: disable=E0611
 
 
-class TaskResponse(BaseModel):
+class ProcessResponse(BaseModel):
     """
     Task response schema
     """
@@ -27,11 +27,3 @@ class ResultResponse(BaseModel):
     crs: str
     start: str
     end: str
-
-
-class ProcessImageRequest(BaseModel):
-    """
-    Process image request schema
-    """
-
-    layout_name: str
