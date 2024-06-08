@@ -1,7 +1,7 @@
 services:
   fastapi-app:
     container_name: nikolove18_fastapi
-    image: fastapi
+    image: nikolove18
     build:
       context: ./
       dockerfile: Dockerfile
@@ -9,6 +9,7 @@ services:
     volumes:
       - .:/app
       - /layouts:/layouts
+      - /mnt:/mnt
     shm_size: '2gb'
     ports:
       - 8000:8000
