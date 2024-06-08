@@ -6,13 +6,10 @@ import argparse
 import csv
 import logging
 import os
-import pickle
 from datetime import datetime
 
-import cv2
-
 from .dead_pixels import correct_dead_pixels
-from .georef import align, detect_keypoints_and_descriptors
+from .georef import align, load_layout_info
 from .utils import load_geotiff, save_geotiff
 
 
@@ -25,74 +22,10 @@ def setup_logging(task_id):
     log_file = os.path.join(task_dir, "process.log")
 
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
     )
-
-
-def save_model(filename, keypoints, descriptors, meta):
-    """
-    Saves the keypoints, descriptors, and meta information to a file.
-    """
-    with open(filename, "wb") as f:
-        # Convert keypoints to a serializable format
-        keypoints_serializable = [
-            [
-                (kp.pt, kp.size, kp.angle, kp.response, kp.octave, kp.class_id)
-                for kp in kp_list
-            ]
-            for kp_list in keypoints
-        ]
-        pickle.dump((keypoints_serializable, descriptors, meta), f)
-
-
-def load_model(filename):
-    """
-    Loads the keypoints, descriptors, and meta information from a file.
-    """
-    with open(filename, "rb") as f:
-        keypoints_serializable, descriptors, meta = pickle.load(f)
-        # Convert keypoints back to cv2.KeyPoint objects
-        keypoints = [
-            [
-                cv2.KeyPoint(
-                    x=kp[0][0],
-                    y=kp[0][1],
-                    size=kp[1],
-                    angle=kp[2],
-                    response=kp[3],
-                    octave=kp[4],
-                    class_id=kp[5],
-                )
-                for kp in kp_list
-            ]
-            for kp_list in keypoints_serializable
-        ]
-        return keypoints, descriptors, meta
-
-
-def load_layout_info(layout_path):
-    """
-    Loads the layout info
-    """
-
-    filename = f"models/sift/{os.path.basename(layout_path)}.pkl"
-    os.makedirs("models/sift", exist_ok=True)
-
-    if os.path.exists(filename):
-        keypoints, descriptors, meta = load_model(filename)
-    else:
-        loaded = load_geotiff(layout_path, layout="hwc")
-        image, meta = loaded["data"], loaded["meta"]
-        keypoints, descriptors = detect_keypoints_and_descriptors(image, "SIFT")
-        save_model(filename, keypoints, descriptors, meta)
-
-    return {
-        "meta": meta,
-        "keypoints": keypoints,
-        "descriptors": descriptors,
-    }
 
 
 def process(layout, crop_name):

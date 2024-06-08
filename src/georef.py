@@ -2,12 +2,81 @@
 georef.py
 """
 
+import logging
+import os
+import pickle
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from affine import Affine
 
-from .utils import scale_image_percentile
+from .utils import load_geotiff, scale_image_percentile
+
+
+def save_model(filename, keypoints, descriptors, meta):
+    """
+    Saves the keypoints, descriptors, and meta information to a file.
+    """
+    with open(filename, "wb") as f:
+        # Convert keypoints to a serializable format
+        keypoints_serializable = [
+            [
+                (kp.pt, kp.size, kp.angle, kp.response, kp.octave, kp.class_id)
+                for kp in kp_list
+            ]
+            for kp_list in keypoints
+        ]
+        pickle.dump((keypoints_serializable, descriptors, meta), f)
+
+
+def load_model(filename):
+    """
+    Loads the keypoints, descriptors, and meta information from a file.
+    """
+    with open(filename, "rb") as f:
+        keypoints_serializable, descriptors, meta = pickle.load(f)
+        # Convert keypoints back to cv2.KeyPoint objects
+        keypoints = [
+            [
+                cv2.KeyPoint(
+                    x=kp[0][0],
+                    y=kp[0][1],
+                    size=kp[1],
+                    angle=kp[2],
+                    response=kp[3],
+                    octave=kp[4],
+                    class_id=kp[5],
+                )
+                for kp in kp_list
+            ]
+            for kp_list in keypoints_serializable
+        ]
+        return keypoints, descriptors, meta
+
+
+def load_layout_info(layout_path):
+    """
+    Loads the layout info
+    """
+
+    filename = f"models/sift/{os.path.basename(layout_path)}.pkl"
+    os.makedirs("models/sift", exist_ok=True)
+
+    if os.path.exists(filename):
+        keypoints, descriptors, meta = load_model(filename)
+    else:
+        loaded = load_geotiff(layout_path, layout="hwc")
+        image, meta = loaded["data"], loaded["meta"]
+
+        keypoints, descriptors = detect_keypoints_and_descriptors(image, "SIFT")
+        save_model(filename, keypoints, descriptors, meta)
+
+    return {
+        "meta": meta,
+        "keypoints": keypoints,
+        "descriptors": descriptors,
+    }
 
 
 def match_features(descriptors1, descriptors2, method="SIFT"):
@@ -25,14 +94,14 @@ def match_features(descriptors1, descriptors2, method="SIFT"):
     """
     if method == "SIFT":
         flann_index_kdtree = 1
-        index_params = dict(algorithm=flann_index_kdtree, trees=3)
+        index_params = dict(algorithm=flann_index_kdtree, trees=5)
         search_params = dict(checks=50)  # or pass empty dictionary
         flann = cv2.FlannBasedMatcher(index_params, search_params)
         matches = flann.knnMatch(descriptors1, descriptors2, k=2)
 
         good_matches = []
         for m, n in matches:
-            if m.distance < 0.7 * n.distance:
+            if m.distance < 0.85 * n.distance:
                 good_matches.append(m)
         return good_matches
 
@@ -68,8 +137,10 @@ def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
     keypoints_list = []
     descriptors_list = []
     for i in range(4):
+        logging.info("Detecting keypoints and computing descriptors on channel %s", i)
         gray = scale_image_percentile(image[:, :, i])
         keypoints, descriptors = feature_detector.detectAndCompute(gray, None)
+        logging.info("Found %s keypoints", len(keypoints))
 
         if draw:
             keypoints_image = cv2.drawKeypoints(
@@ -87,8 +158,8 @@ def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
 
 def compute_transformation(
     scene_image,
-    keypoints_list_substrate,
-    descriptors_list_substrate,
+    keypoints_list_layout,
+    descriptors_list_layout,
     transformation_type="homography",
     method="SIFT",
 ):
@@ -97,8 +168,8 @@ def compute_transformation(
 
     Args:
         scene_image (numpy.ndarray): The image to be transformed.
-        keypoints_list_substrate (list): List of keypoints from the substrate image.
-        descriptors_list_substrate (list): List of descriptors from the substrate image.
+        keypoints_list_layout (list): List of keypoints from the layout image.
+        descriptors_list_layout (list): List of descriptors from the layout image.
         transformation_type (str): The type of transformation
             ('homography', 'affine', or 'affine_partial').
         method (str): The feature extraction method used ('SIFT' or 'ORB').
@@ -110,33 +181,34 @@ def compute_transformation(
         scene_image, method
     )
 
-    scene_points = []
-    substrate_points = []
+    crop_points = []
+    layout_points = []
 
     for i in range(4):
+        logging.info("%s channel", i)
         matches = match_features(
-            descriptors_list_scene[i], descriptors_list_substrate[i], method=method
+            descriptors_list_scene[i], descriptors_list_layout[i], method=method
         )
-        print(f"Number of matches in {i} channel: ", len(matches))
+        logging.info("%s matches found.", len(matches))
         for match in matches:
-            scene_points.append(keypoints_list_scene[i][match.queryIdx].pt)
-            substrate_points.append(keypoints_list_substrate[i][match.trainIdx].pt)
+            crop_points.append(keypoints_list_scene[i][match.queryIdx].pt)
+            layout_points.append(keypoints_list_layout[i][match.trainIdx].pt)
 
     if transformation_type == "homography":
         transf_matrix, _ = cv2.findHomography(
-            np.array(scene_points), np.array(substrate_points), cv2.RANSAC, 5.0
+            np.array(crop_points), np.array(layout_points), cv2.RANSAC, 5.0
         )
     elif transformation_type == "affine":
         transf_matrix, _ = cv2.estimateAffine2D(
-            np.array(scene_points),
-            np.array(substrate_points),
+            np.array(crop_points),
+            np.array(layout_points),
             method=cv2.RANSAC,
             ransacReprojThreshold=5.0,
         )
     elif transformation_type == "affine_partial":
         transf_matrix, _ = cv2.estimateAffinePartial2D(
-            np.array(scene_points),
-            np.array(substrate_points),
+            np.array(crop_points),
+            np.array(layout_points),
             method=cv2.RANSAC,
             ransacReprojThreshold=5.0,
         )
@@ -146,7 +218,7 @@ def compute_transformation(
             "'homography', 'affine' or 'affine_partial'"
         )
 
-    return transf_matrix
+    return transf_matrix, layout_points, crop_points
 
 
 def convert_affine_to_numpy(affine: Affine):
@@ -207,7 +279,7 @@ def align(layout_keypoints, layout_descriptors, layout_meta, crop_image):
     Returns:
         dict: A dictionary containing the new corners and updated metadata.
     """
-    transf_matrix = compute_transformation(
+    transf_matrix, layout_points, crop_points = compute_transformation(
         crop_image,
         layout_keypoints,
         layout_descriptors,
@@ -230,4 +302,9 @@ def align(layout_keypoints, layout_descriptors, layout_meta, crop_image):
     new_meta["width"] = w
     new_meta["height"] = h
 
-    return {"corners": new_corners, "meta": new_meta}
+    return {
+        "corners": new_corners,
+        "meta": new_meta,
+        "layout_points": layout_points,
+        "crop_points": crop_points,
+    }
