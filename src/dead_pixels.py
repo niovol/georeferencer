@@ -158,7 +158,13 @@ def correct_dead_pixels(image, window_size=9):
 
         corrected_image[row, col, channel] = corrected_value
         bug_report.append(
-            f"{row}; {col}; {channel+1}; {original_value}; {corrected_value}"
+            {
+                "row_number": row,
+                "column_number": col,
+                "channel_number": channel + 1,
+                "dead_value": original_value,
+                "corrected_value": corrected_value,
+            }
         )
 
     return corrected_image, bug_report

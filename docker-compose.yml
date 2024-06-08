@@ -5,7 +5,7 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile
-    command: uvicorn src.api.main:app --reload --host 0.0.0.0
+    command: uvicorn src.api.server:app --reload --host 0.0.0.0
     volumes:
       - .:/app
       - /layouts:/layouts
