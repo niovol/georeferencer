@@ -5,10 +5,13 @@ utils.py
 import os
 from typing import Any, Dict
 
+import cv2
 import numpy as np
 import rasterio
 import rasterio.features
 import rasterio.windows
+from rasterio.warp import Resampling, reproject
+from rasterio.windows import Window
 
 
 def scale_image_percentile(image, low_percentile=2, high_percentile=98):
@@ -23,7 +26,7 @@ def scale_image_percentile(image, low_percentile=2, high_percentile=98):
     Returns:
         numpy.ndarray: Scaled image.
     """
-    non_zero_values = image[image > 0]
+    non_zero_values = image[image != 0]
     low, high = np.percentile(non_zero_values, [low_percentile, high_percentile])
     scaled_image = np.clip((image - low) / (high - low) * 254 + 1, 1, 255).astype(
         "uint8"
@@ -227,3 +230,126 @@ def save_geotiff(
         raise IOError(
             f"Failed to save file {output_file} using Rasterio. " f"Error: {str(e)}"
         ) from e
+
+
+def downscale(input_path: str, output_path: str, height: int, width: int) -> None:
+    """
+    Downscale a raster image to the specified height and width.
+
+    Args:
+        input_path (str): Path to the input raster file.
+        output_path (str): Path to save the downscaled raster file.
+        height (int): Desired height of the downscaled raster.
+        width (int): Desired width of the downscaled raster.
+
+    Returns:
+        None
+    """
+    with rasterio.open(input_path) as src:
+        transform = src.transform * src.transform.scale(
+            (src.width / width), (src.height / height)
+        )
+
+        new_meta = src.meta.copy()
+        new_meta.update({"transform": transform, "width": width, "height": height})
+
+        with rasterio.open(output_path, "w", **new_meta) as dst:
+            for i in range(1, src.count + 1):
+                reproject(
+                    source=rasterio.band(src, i),
+                    destination=rasterio.band(dst, i),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs=src.crs,
+                    resampling=Resampling.nearest,
+                )
+
+
+def equalize_hist_16bit_exclude_zero(img):
+    """Equalizes the histogram of a 16-bit image, excluding zero values."""
+    img_hist_eq = np.zeros_like(img)
+    for i in range(img.shape[2]):
+        channel = img[:, :, i]
+        mask = channel > 0  # Create a mask to exclude zero values
+        hist, _ = np.histogram(channel[mask].flatten(), 65535, [1, 65536])
+        cdf = hist.cumsum()
+        cdf = (cdf - cdf.min()) * 65535 / (cdf.max() - cdf.min())  # Normalize to 16-bit
+        cdf = np.insert(cdf, 0, 0)  # Insert 0 for the zero value
+        cdf = cdf.astype(np.uint16)
+        img_hist_eq[:, :, i] = cdf[channel]
+    return img_hist_eq
+
+
+def equalize_hist(img):
+    img_hist_eq = equalize_hist_16bit_exclude_zero(img) / 65535
+    img_hist_eq_8bit = (img_hist_eq * 254 + 1).astype("uint8")
+
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+    img_clahe = np.zeros_like(img_hist_eq_8bit)
+    for i in range(img.shape[2]):
+        img_clahe[:, :, i] = clahe.apply(img_hist_eq_8bit[:, :, i])
+
+    return img_clahe
+
+
+def slice_geotiff(
+    input_path, output_dir, grid_size, overlap=(0, 0), margins=(0, 0, 0, 0)
+):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    left_margin, right_margin, top_margin, bottom_margin = margins
+    x_overlap, y_overlap = overlap
+
+    with rasterio.open(input_path) as src:
+        width = src.width
+        height = src.height
+
+        cropped_width = width - left_margin - right_margin
+        cropped_height = height - top_margin - bottom_margin
+
+        tile_width = (cropped_width + (grid_size[0] - 1) * x_overlap) // grid_size[0]
+        tile_height = (cropped_height + (grid_size[1] - 1) * y_overlap) // grid_size[1]
+
+        for i in range(grid_size[1]):
+            for j in range(grid_size[0]):
+                window = Window(
+                    j * (tile_width - x_overlap) + left_margin,
+                    i * (tile_height - y_overlap) + top_margin,
+                    tile_width,
+                    tile_height,
+                )
+                transform = src.window_transform(window)
+
+                output_path = os.path.join(
+                    output_dir, f"{os.path.basename(input_path)}_{i}_{j}.tif"
+                )
+                meta = src.meta.copy()
+                meta.update(
+                    {"height": tile_height, "width": tile_width, "transform": transform}
+                )
+
+                with rasterio.open(output_path, "w", **meta) as dst:
+                    dst.write(src.read(window=window))
+
+
+def megagray(img):
+    # return (
+    #     2 * img[:, :, 0]
+    #     + 0.89772363 * img[:, :, 1]
+    #     - 1.39906391 * img[:, :, 2]
+    #     - 0.49865972 * img[:, :, 3]
+    # )
+    return (
+        0.11185456 * img[:, :, 0]
+        - 0.20724195 * img[:, :, 1]
+        + 0.03658154 * img[:, :, 2]
+        + 0.0481187 * img[:, :, 3]
+    ) / (
+        0.07445932 * img[:, :, 0]
+        + 0.37339248 * img[:, :, 1]
+        - 0.3639714 * img[:, :, 2]
+        + 0.99997221 * img[:, :, 3]
+        + 0.25624726
+    )

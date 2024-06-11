@@ -4,3 +4,9 @@ models
 tasks
 tmp
 uploads
+*.ipynb
+png
+layouts
+crops
+1_20
+.*

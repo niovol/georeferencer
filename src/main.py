@@ -72,7 +72,9 @@ def main(layout_path, crop_path, task_id="."):
     crop_name = os.path.basename(crop_path)
 
     task_dir = os.path.join("tasks", task_id)
+    corrected_dir = os.path.join(task_dir, "corrected")
     os.makedirs(task_dir, exist_ok=True)
+    os.makedirs(corrected_dir, exist_ok=True)
 
     coords_csv_file_path = os.path.join(
         task_dir, f"coords_{crop_name.replace('.tif', '.csv')}"
@@ -83,7 +85,7 @@ def main(layout_path, crop_path, task_id="."):
     bug_report_file_path = os.path.join(
         task_dir, f"bug_report_{crop_name.replace('.tif', '.csv')}"
     )
-    corrected_file_path = os.path.join(task_dir, f"corrected_{crop_name}")
+    corrected_file_path = os.path.join(corrected_dir, crop_name)
     aligned_file_path = os.path.join(task_dir, f"aligned_{crop_name}")
 
     logging.info("Loading layout model")

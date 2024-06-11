@@ -11,7 +11,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from affine import Affine
 
-from .utils import load_geotiff, scale_image_percentile
+from .utils import (
+    downscale,
+    equalize_hist,
+    load_geotiff,
+    megagray,
+    save_geotiff,
+    scale_image_percentile,
+    slice_geotiff,
+)
 
 
 def save_model(filename, keypoints, descriptors, meta):
@@ -60,17 +68,102 @@ def load_layout_info(layout_path):
     Loads the layout info
     """
 
-    filename = f"models/sift/{os.path.basename(layout_path)}.pkl"
+    filename_sift = f"models/sift/{os.path.basename(layout_path)}.pkl"
     os.makedirs("models/sift", exist_ok=True)
+    os.makedirs("models/downscale", exist_ok=True)
+    os.makedirs("models/hist_equalize", exist_ok=True)
+    os.makedirs("models/sobel", exist_ok=True)
 
-    if os.path.exists(filename):
-        keypoints, descriptors, meta = load_model(filename)
+    if os.path.exists(filename_sift):
+        keypoints, descriptors, meta = load_model(filename_sift)
     else:
-        loaded = load_geotiff(layout_path, layout="hwc")
+        filename_downscale = f"models/downscale/{os.path.basename(layout_path)}"
+        if not os.path.exists(filename_downscale):
+            downscale(layout_path, filename_downscale, 1600, 1600)
+            slice_geotiff(
+                filename_downscale, "models/downscale", (8, 5), (160, 100), (0, 0, 0, 0)
+            )
+
+        loaded = load_geotiff(filename_downscale, layout="hwc")
         image, meta = loaded["data"], loaded["meta"]
 
-        keypoints, descriptors = detect_keypoints_and_descriptors(image, "SIFT")
-        save_model(filename, keypoints, descriptors, meta)
+        filename_hist_equalize = f"models/hist_equalize/{os.path.basename(layout_path)}"
+        if os.path.exists(filename_hist_equalize):
+            loaded_equalized = load_geotiff(filename_hist_equalize, layout="hwc")
+            image_equalized = loaded_equalized["data"]
+        else:
+            image_equalized = equalize_hist(image)
+            new_meta = meta.copy()
+            new_meta["dtype"] = "uint8"
+            save_geotiff(
+                filename_hist_equalize, image_equalized, new_meta, layout="hwc"
+            )
+
+        filename_megagray = f"models/megagray/{os.path.basename(layout_path)}"
+        if os.path.exists(filename_megagray):
+            loaded_megagray = load_geotiff(filename_megagray, layout="hwc")
+            image_megagray = loaded_megagray["data"]
+        else:
+            image_megagray = megagray(image).reshape(
+                (image.shape[0], image.shape[1], 1)
+            )
+            image_megagray = scale_image_percentile(image_megagray)
+            new_meta = meta.copy()
+            new_meta["dtype"] = "uint8"
+            new_meta["count"] = 1
+            save_geotiff(filename_megagray, image_megagray, new_meta, layout="hwc")
+
+        filename_sobel = f"models/sobel/{os.path.basename(layout_path)}"
+        if os.path.exists(filename_sobel):
+            loaded_sobel = load_geotiff(filename_sobel, layout="hwc")
+            sobel_combined = loaded_sobel["data"]
+        else:
+            sobelx = cv2.Sobel(image_equalized[:, :, 3], cv2.CV_64F, 1, 0, ksize=3)
+            sobely = cv2.Sobel(image_equalized[:, :, 3], cv2.CV_64F, 0, 1, ksize=3)
+            sobel_combined = np.sqrt(sobelx**2 + sobely**2)
+            sobel_combined = cv2.normalize(
+                sobel_combined, None, 0, 255, cv2.NORM_MINMAX
+            )
+
+            new_meta = meta.copy()
+            new_meta["dtype"] = "uint8"
+            new_meta["count"] = 1
+            save_geotiff(
+                filename_sobel,
+                sobel_combined.reshape(
+                    (sobel_combined.shape[0], sobel_combined.shape[1], 1)
+                ),
+                new_meta,
+                layout="hwc",
+            )
+
+        filename_canny = f"models/canny/{os.path.basename(layout_path)}"
+        if os.path.exists(filename_canny):
+            loaded_canny = load_geotiff(filename_canny, layout="hwc")
+            canny_edges = loaded_canny["data"]
+        else:
+            canny_edges = cv2.Canny(image_equalized[:, :, 3], 100, 200)
+
+            new_meta = meta.copy()
+            new_meta["dtype"] = "uint8"
+            new_meta["count"] = 1
+            save_geotiff(
+                filename_canny,
+                canny_edges.reshape((canny_edges.shape[0], canny_edges.shape[1], 1)),
+                new_meta,
+                layout="hwc",
+            )
+
+        keypoints, descriptors, keypoints_image = detect_keypoints_and_descriptors(
+            image, "SIFT"
+        )
+        save_model(filename_sift, keypoints, descriptors, meta)
+
+        new_meta = meta.copy()
+        new_meta["count"] = 3
+        save_geotiff(
+            "tasks/keypoints_image.tif", keypoints_image, new_meta, layout="hwc"
+        )
 
     return {
         "meta": meta,
@@ -96,12 +189,13 @@ def match_features(descriptors1, descriptors2, method="SIFT"):
         flann_index_kdtree = 1
         index_params = dict(algorithm=flann_index_kdtree, trees=5)
         search_params = dict(checks=50)  # or pass empty dictionary
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-        matches = flann.knnMatch(descriptors1, descriptors2, k=2)
+        matcher = cv2.FlannBasedMatcher(index_params, search_params)
+        # matcher = cv2.BFMatcher()
+        matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
 
         good_matches = []
         for m, n in matches:
-            if m.distance < 0.85 * n.distance:
+            if m.distance < 0.9 * n.distance:
                 good_matches.append(m)
         return good_matches
 
@@ -134,26 +228,37 @@ def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
     else:
         raise ValueError(f"Unsupported detector type: {detector_type}")
 
+    image_equalized = equalize_hist(image)
+
     keypoints_list = []
     descriptors_list = []
-    for i in range(4):
+    for i in [10]:  # range(1):
         logging.info("Detecting keypoints and computing descriptors on channel %s", i)
-        gray = scale_image_percentile(image[:, :, i])
+
+        if i < 4:
+            gray = image_equalized[:, :, i]
+            # gray = scale_image_percentile(image[:, :, i])
+        elif i == 10:
+            gray = scale_image_percentile(megagray(image))
+        elif i == 20:
+            pass
+
         keypoints, descriptors = feature_detector.detectAndCompute(gray, None)
         logging.info("Found %s keypoints", len(keypoints))
 
+        keypoints_image = cv2.drawKeypoints(
+            gray, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+        )
+        keypoints_image_rgb = cv2.cvtColor(keypoints_image, cv2.COLOR_BGR2RGB)
+
         if draw:
-            keypoints_image = cv2.drawKeypoints(
-                gray, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
-            )
-            keypoints_image_rgb = cv2.cvtColor(keypoints_image, cv2.COLOR_BGR2RGB)
             plt.imshow(keypoints_image_rgb)
             plt.show()
 
         keypoints_list.append(keypoints)
         descriptors_list.append(descriptors)
 
-    return keypoints_list, descriptors_list
+    return keypoints_list, descriptors_list, keypoints_image_rgb
 
 
 def compute_transformation(
@@ -177,21 +282,21 @@ def compute_transformation(
     Returns:
         numpy.ndarray: The transformation matrix.
     """
-    keypoints_list_scene, descriptors_list_scene = detect_keypoints_and_descriptors(
+    keypoints_list_crop, descriptors_list_crop, _ = detect_keypoints_and_descriptors(
         scene_image, method
     )
 
     crop_points = []
     layout_points = []
 
-    for i in range(4):
+    for i in range(1):
         logging.info("%s channel", i)
         matches = match_features(
-            descriptors_list_scene[i], descriptors_list_layout[i], method=method
+            descriptors_list_crop[i], descriptors_list_layout[i], method=method
         )
         logging.info("%s matches found.", len(matches))
         for match in matches:
-            crop_points.append(keypoints_list_scene[i][match.queryIdx].pt)
+            crop_points.append(keypoints_list_crop[i][match.queryIdx].pt)
             layout_points.append(keypoints_list_layout[i][match.trainIdx].pt)
 
     if transformation_type == "homography":
