@@ -353,3 +353,21 @@ def megagray(img):
         + 0.99997221 * img[:, :, 3]
         + 0.25624726
     )
+
+
+def final_uint8(image):
+    gray = scale_image_percentile(megagray(image))
+    nir = image[:, :, 3]
+
+    sobelx = cv2.Sobel(nir, cv2.CV_64F, 1, 0, ksize=3)
+    sobely = cv2.Sobel(nir, cv2.CV_64F, 0, 1, ksize=3)
+    sobel = np.sqrt(sobelx**2 + sobely**2)
+    sobel = cv2.normalize(sobel, None, 0, 255, cv2.NORM_MINMAX).astype("uint8")
+
+    final = (
+        np.clip(0.9 * sobel.astype("float32") + 0.1 * gray.astype("float32"), 1, 255)
+        .astype("uint8")
+        .reshape(image.shape[0], image.shape[1], 1)
+    )
+
+    return final

@@ -19,6 +19,7 @@ from .utils import (
     save_geotiff,
     scale_image_percentile,
     slice_geotiff,
+    final_uint8,
 )
 
 
@@ -80,82 +81,24 @@ def load_layout_info(layout_path):
         filename_downscale = f"models/downscale/{os.path.basename(layout_path)}"
         if not os.path.exists(filename_downscale):
             downscale(layout_path, filename_downscale, 1600, 1600)
-            slice_geotiff(
-                filename_downscale, "models/downscale", (8, 5), (160, 100), (0, 0, 0, 0)
-            )
 
         loaded = load_geotiff(filename_downscale, layout="hwc")
         image, meta = loaded["data"], loaded["meta"]
 
-        filename_hist_equalize = f"models/hist_equalize/{os.path.basename(layout_path)}"
-        if os.path.exists(filename_hist_equalize):
-            loaded_equalized = load_geotiff(filename_hist_equalize, layout="hwc")
-            image_equalized = loaded_equalized["data"]
-        else:
-            image_equalized = equalize_hist(image)
-            new_meta = meta.copy()
-            new_meta["dtype"] = "uint8"
-            save_geotiff(
-                filename_hist_equalize, image_equalized, new_meta, layout="hwc"
-            )
+        final = final_uint8(image)
 
-        filename_megagray = f"models/megagray/{os.path.basename(layout_path)}"
-        if os.path.exists(filename_megagray):
-            loaded_megagray = load_geotiff(filename_megagray, layout="hwc")
-            image_megagray = loaded_megagray["data"]
-        else:
-            image_megagray = megagray(image).reshape(
-                (image.shape[0], image.shape[1], 1)
-            )
-            image_megagray = scale_image_percentile(image_megagray)
-            new_meta = meta.copy()
-            new_meta["dtype"] = "uint8"
-            new_meta["count"] = 1
-            save_geotiff(filename_megagray, image_megagray, new_meta, layout="hwc")
+        filename_final = f"models/final/{os.path.basename(layout_path)}"
+        new_meta = meta.copy()
+        new_meta["dtype"] = "uint8"
+        new_meta["count"] = 1
+        save_geotiff(filename_final, final, new_meta, layout="hwc")
 
-        filename_sobel = f"models/sobel/{os.path.basename(layout_path)}"
-        if os.path.exists(filename_sobel):
-            loaded_sobel = load_geotiff(filename_sobel, layout="hwc")
-            sobel_combined = loaded_sobel["data"]
-        else:
-            sobelx = cv2.Sobel(image_equalized[:, :, 3], cv2.CV_64F, 1, 0, ksize=3)
-            sobely = cv2.Sobel(image_equalized[:, :, 3], cv2.CV_64F, 0, 1, ksize=3)
-            sobel_combined = np.sqrt(sobelx**2 + sobely**2)
-            sobel_combined = cv2.normalize(
-                sobel_combined, None, 0, 255, cv2.NORM_MINMAX
-            )
-
-            new_meta = meta.copy()
-            new_meta["dtype"] = "uint8"
-            new_meta["count"] = 1
-            save_geotiff(
-                filename_sobel,
-                sobel_combined.reshape(
-                    (sobel_combined.shape[0], sobel_combined.shape[1], 1)
-                ),
-                new_meta,
-                layout="hwc",
-            )
-
-        filename_canny = f"models/canny/{os.path.basename(layout_path)}"
-        if os.path.exists(filename_canny):
-            loaded_canny = load_geotiff(filename_canny, layout="hwc")
-            canny_edges = loaded_canny["data"]
-        else:
-            canny_edges = cv2.Canny(image_equalized[:, :, 3], 100, 200)
-
-            new_meta = meta.copy()
-            new_meta["dtype"] = "uint8"
-            new_meta["count"] = 1
-            save_geotiff(
-                filename_canny,
-                canny_edges.reshape((canny_edges.shape[0], canny_edges.shape[1], 1)),
-                new_meta,
-                layout="hwc",
-            )
+        slice_geotiff(
+            filename_final, "models/final_crops", (8, 5), (160, 100), (0, 0, 0, 0)
+        )
 
         keypoints, descriptors, keypoints_image = detect_keypoints_and_descriptors(
-            image, "SIFT"
+            final, "SIFT"
         )
         save_model(filename_sift, keypoints, descriptors, meta)
 
@@ -232,7 +175,7 @@ def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
 
     keypoints_list = []
     descriptors_list = []
-    for i in [10]:  # range(1):
+    for i in [20]:  # range(1):
         logging.info("Detecting keypoints and computing descriptors on channel %s", i)
 
         if i < 4:
@@ -241,7 +184,7 @@ def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
         elif i == 10:
             gray = scale_image_percentile(megagray(image))
         elif i == 20:
-            pass
+            gray = image
 
         keypoints, descriptors = feature_detector.detectAndCompute(gray, None)
         logging.info("Found %s keypoints", len(keypoints))
@@ -262,17 +205,17 @@ def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
 
 
 def compute_transformation(
-    scene_image,
+    crpo_image,
     keypoints_list_layout,
     descriptors_list_layout,
     transformation_type="homography",
     method="SIFT",
 ):
     """
-    Computes the transformation matrix to align the scene.
+    Computes the transformation matrix to align the crop image with the layout image.
 
     Args:
-        scene_image (numpy.ndarray): The image to be transformed.
+        crop_image (numpy.ndarray): The image to be transformed.
         keypoints_list_layout (list): List of keypoints from the layout image.
         descriptors_list_layout (list): List of descriptors from the layout image.
         transformation_type (str): The type of transformation
@@ -283,7 +226,7 @@ def compute_transformation(
         numpy.ndarray: The transformation matrix.
     """
     keypoints_list_crop, descriptors_list_crop, _ = detect_keypoints_and_descriptors(
-        scene_image, method
+        crpo_image, method
     )
 
     crop_points = []
@@ -385,7 +328,7 @@ def align(layout_keypoints, layout_descriptors, layout_meta, crop_image):
         dict: A dictionary containing the new corners and updated metadata.
     """
     transf_matrix, layout_points, crop_points = compute_transformation(
-        crop_image,
+        final_uint8(crop_image),
         layout_keypoints,
         layout_descriptors,
         transformation_type="affine",
@@ -393,13 +336,13 @@ def align(layout_keypoints, layout_descriptors, layout_meta, crop_image):
     )
 
     h, w = crop_image.shape[:2]
-    scene_corners_pixels = [[0, 0], [w, 0], [w, h], [0, h]]
+    crop_corners_pixels = [[0, 0], [w, 0], [w, h], [0, h]]
 
     new_affine_array = multiply_affine_arrays(
         transf_matrix, convert_affine_to_numpy(layout_meta["transform"])
     )
     new_affine = convert_numpy_to_affine(new_affine_array)
-    new_corners = [new_affine * corner_pixels for corner_pixels in scene_corners_pixels]
+    new_corners = [new_affine * corner_pixels for corner_pixels in crop_corners_pixels]
     print(f"Corners: {new_corners}")
 
     new_meta = layout_meta.copy()
