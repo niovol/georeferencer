@@ -323,7 +323,8 @@ def slice_geotiff(
                 transform = src.window_transform(window)
 
                 output_path = os.path.join(
-                    output_dir, f"{os.path.basename(input_path)}_{i}_{j}.tif"
+                    output_dir,
+                    os.path.basename(input_path).replace(".tif", f"_{i}_{j}.tif"),
                 )
                 meta = src.meta.copy()
                 meta.update(
@@ -356,13 +357,21 @@ def megagray(img):
 
 
 def final_uint8(image):
-    gray = scale_image_percentile(megagray(image))
+    gray = scale_image_percentile(megagray(image)).reshape(
+        image.shape[0], image.shape[1], 1
+    )
+
     nir = image[:, :, 3]
+    # gray = equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1))
 
     sobelx = cv2.Sobel(nir, cv2.CV_64F, 1, 0, ksize=3)
     sobely = cv2.Sobel(nir, cv2.CV_64F, 0, 1, ksize=3)
     sobel = np.sqrt(sobelx**2 + sobely**2)
-    sobel = cv2.normalize(sobel, None, 0, 255, cv2.NORM_MINMAX).astype("uint8")
+    sobel = (
+        cv2.normalize(sobel, None, 0, 255, cv2.NORM_MINMAX)
+        .astype("uint8")
+        .reshape(sobel.shape[0], sobel.shape[1], 1)
+    )
 
     final = (
         np.clip(0.9 * sobel.astype("float32") + 0.1 * gray.astype("float32"), 1, 255)
