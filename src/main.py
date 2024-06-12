@@ -40,9 +40,7 @@ def process(layout, crop_name):
 
     logging.info("Starting georeference procedure. Fixing start time.")
     start_time = datetime.now()
-    aligned = align(
-        layout["keypoints"], layout["descriptors"], layout["meta"], corrected_img
-    )
+    aligned = align(layout, corrected_img)
 
     end_time = datetime.now()
     logging.info("Fixing end time.")

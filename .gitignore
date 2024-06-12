@@ -1,7 +1,7 @@
 __pycache__
 examples
-models
-tasks
+/models
+/tasks*
 tmp
 uploads
 *.ipynb
