@@ -124,7 +124,7 @@ def align(layout_crop_paths, crop_image, crop_path):
 
     superpoint_config = {
         "nms_radius": 4,
-        "keypoint_threshold": 0.01,
+        "keypoint_threshold": 0.015,
         "max_keypoints": 2048,
     }
     superglue_config = {
