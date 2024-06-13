@@ -7,21 +7,15 @@ import os
 import pickle
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 from affine import Affine
-from torch import layout
 
 from .superglue.models.matching import Matching
 from .superglue.models.utils import frame2tensor
 from .utils import (
     downscale,
-    equalize_hist,
     final_uint8,
     load_geotiff,
-    megagray,
-    save_geotiff,
-    scale_image_percentile,
     slice_geotiff,
 )
 
@@ -76,151 +70,31 @@ def load_model(filename):
         return keypoints, descriptors, metas, layout_crop_filenames
 
 
-def load_layout_info(layout_path):
+def prepare_layout(layout_path):
     """
     Loads the layout info
     """
 
-    filename_sift = f"models/sift/{os.path.basename(layout_path)}.pkl"
-    os.makedirs("models/sift", exist_ok=True)
-    os.makedirs("models/downscale", exist_ok=True)
-    os.makedirs("models/hist_equalize", exist_ok=True)
-    os.makedirs("models/sobel", exist_ok=True)
+    # filename_sift = f"models/sift/{os.path.basename(layout_path)}.pkl"
+    os.makedirs("cache/layout_downscale", exist_ok=True)
 
-    if os.path.exists(filename_sift):
-        keypoints, descriptors, metas, layout_crop_filenames = load_model(filename_sift)
-    else:
-        filename_downscale = f"models/downscale/{os.path.basename(layout_path)}"
-        if not os.path.exists(filename_downscale):
-            downscale(layout_path, filename_downscale, 1600, 1600)
-
-        # loaded = load_geotiff(filename_downscale, layout="hwc")
-        # image, meta = loaded["data"], loaded["meta"]
-        # final = final_uint8(image)
-
-        slice_geotiff(filename_downscale, "models/downscale_crops", (8, 5), (160, 100))
-
-        keypoints, descriptors, metas, layout_crop_filenames = [], [], [], []
-        for i in range(5):
-            for j in range(8):
-                filename = os.path.basename(layout_path).replace(
-                    ".tif", f"_{i}_{j}.tif"
-                )
-                layout_crop_pathname = f"models/downscale_crops/{filename}"
-                loaded_downscale_crop = load_geotiff(layout_crop_pathname, layout="hwc")
-                keypoints_detected, descriptors_detected, keypoints_image = (
-                    detect_keypoints_and_descriptors(
-                        final_uint8(loaded_downscale_crop["data"]), "SIFT"
-                    )
-                )
-                keypoints.append(keypoints_detected)
-                descriptors.append(descriptors_detected)
-                metas.append(loaded_downscale_crop["meta"])
-                layout_crop_filenames.append(layout_crop_pathname)
-
-        # filename_final = f"models/final/{os.path.basename(layout_path)}"
-        # new_meta = meta.copy()
-        # new_meta["dtype"] = "uint8"
-        # new_meta["count"] = 1
-        # save_geotiff(filename_final, final, new_meta, layout="hwc")
-        # slice_geotiff(
-        #     filename_final, "models/final_crops", (8, 5), (160, 100), (0, 0, 0, 0)
-        # )
-
-        # final0 = load_geotiff(
-        #     f"models/final_crops/{os.path.basename(layout_path).replace('.tif', '_0_0.tif')}",
-        #     layout="hwc",
-        # )["data"]
-
-        save_model(filename_sift, keypoints, descriptors, metas, layout_crop_filenames)
-
-        # new_meta = meta.copy()
-        # new_meta["count"] = 3
-        # save_geotiff(
-        #     "tasks/keypoints_image.tif", keypoints_image, new_meta, layout="hwc"
-        # )
-
-    return {
-        "keypoints": keypoints,
-        "descriptors": descriptors,
-        "metas": metas,
-        "crop_filenames": layout_crop_filenames,
-    }
-
-
-def match_features(descriptors1, descriptors2, method="SIFT"):
-    """
-    Matches features between two sets of descriptors.
-
-    Args:
-        descriptors1 (numpy.ndarray): Descriptors from the first image.
-        descriptors2 (numpy.ndarray): Descriptors from the second image.
-        method (str): The feature extraction method used ('SIFT' or 'SuperGlue').
-
-    Returns:
-        matches: List of matched features.
-    """
-    if method == "SIFT":
-        matcher = cv2.BFMatcher()
-        matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
-
-        good_matches = []
-        for m, n in matches:
-            if m.distance < 0.9 * n.distance:
-                good_matches.append(m)
-        return good_matches
-
-    raise ValueError("`method` should be either 'SIFT' or 'SuperGlue'")
-
-
-def detect_keypoints_and_descriptors(image, detector_type="SIFT", draw=False):
-    """
-    Detects keypoints and computes descriptors for the given image.
-
-    Args:
-        image (numpy.ndarray): Input image.
-        detector_type (str): The type of feature detector to use ('SIFT' or 'SuperGlue').
-        draw (bool): Whether to draw and display the keypoints on the image.
-
-    Returns:
-        tuple: Lists of keypoints and descriptors for each channel.
-    """
-    if detector_type == "SIFT":
-        feature_detector = cv2.SIFT_create()
-    else:
-        raise ValueError(f"Unsupported detector type: {detector_type}")
-
-    image_equalized = equalize_hist(image)
-
-    keypoints_list = []
-    descriptors_list = []
-    for i in [20]:  # range(1):
-        logging.info("Detecting keypoints and computing descriptors on channel %s", i)
-
-        if i < 4:
-            gray = image_equalized[:, :, i]
-            # gray = scale_image_percentile(image[:, :, i])
-        elif i == 10:
-            gray = scale_image_percentile(megagray(image))
-        elif i == 20:
-            gray = image
-
-        keypoints, descriptors = feature_detector.detectAndCompute(gray, None)
-        logging.info("Found %s keypoints", len(keypoints))
-
-        keypoints_image = cv2.drawKeypoints(
-            gray, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+    filename_downscale = f"cache/layout_downscale/{os.path.basename(layout_path)}"
+    if not os.path.exists(filename_downscale):
+        downscale(layout_path, filename_downscale, 1600, 1600)
+        slice_geotiff(
+            filename_downscale, "cache/layout_downscale_crops", (8, 5), (160, 100)
         )
-        keypoints_image_rgb = cv2.cvtColor(keypoints_image, cv2.COLOR_BGR2RGB)
 
-        if draw:
-            plt.imshow(keypoints_image_rgb)
-            plt.show()
+    layout_crop_paths = []
+    for i in range(5):
+        for j in range(8):
+            filename = os.path.basename(layout_path).replace(".tif", f"_{i}_{j}.tif")
+            layout_crop_path = f"cache/layout_downscale_crops/{filename}"
+            layout_crop_paths.append(layout_crop_path)
 
-        keypoints_list.append(keypoints)
-        descriptors_list.append(descriptors)
+    # save_model(filename_sift, keypoints, descriptors, metas, layout_crop_filenames)
 
-    return keypoints_list, descriptors_list, keypoints_image_rgb
+    return layout_crop_paths
 
 
 def convert_affine_to_numpy(affine: Affine):
@@ -268,7 +142,7 @@ def multiply_affine_arrays(array1, array2):
     return mult[:2, :]
 
 
-def align(layout, crop_image):
+def align(layout_crop_paths, crop_image):
     """
     Aligns a cropped image to a layout using keypoints and descriptors.
 
@@ -296,74 +170,50 @@ def align(layout, crop_image):
     }
     matching = Matching(matching_config).eval().to("cpu")
 
-    keypoints_list_crop, descriptors_list_crop, _ = detect_keypoints_and_descriptors(
-        final_uint8(crop_image), "SIFT"
-    )
-
-    layout_keypoints_all = layout["keypoints"]
-    layout_descriptors_all = layout["descriptors"]
-    layout_metas = layout["metas"]
-    layout_crop_filenames = layout["crop_filenames"]
     all_matches = []
-    for layout_keypoints, layout_descriptors, meta, layout_crop_filename in zip(
-        layout_keypoints_all,
-        layout_descriptors_all,
-        layout_metas,
-        layout_crop_filenames,
-    ):
-        crop_points = []
-        layout_points = []
-        for j in range(1):
-            logging.info("%s channel", j)
+    for layout_crop_path in layout_crop_paths:
+        loaded = load_geotiff(layout_crop_path, layout="hwc")
+        inp0 = frame2tensor(
+            np.squeeze(final_uint8(loaded["data"])).astype("float32"), "cpu"
+        )
+        inp1 = frame2tensor(
+            np.squeeze(final_uint8(crop_image)).astype("float32"), "cpu"
+        )
 
-            # matches = match_features(
-            #    descriptors_list_crop[j], layout_descriptors[j], method="SIFT"
-            # )
-            loaded = load_geotiff(layout_crop_filename, layout="hwc")
-            inp0 = frame2tensor(
-                np.squeeze(final_uint8(loaded["data"])).astype("float32"), "cpu"
-            )
-            inp1 = frame2tensor(
-                np.squeeze(final_uint8(crop_image)).astype("float32"), "cpu"
-            )
+        pred = matching({"image0": inp0, "image1": inp1})
+        pred = {k: v[0].detach().cpu().numpy() for k, v in pred.items()}
+        kpts0, kpts1 = pred["keypoints0"], pred["keypoints1"]
+        matches, conf = pred["matches0"], pred["matching_scores0"]
 
-            pred = matching({"image0": inp0, "image1": inp1})
-            pred = {k: v[0].detach().cpu().numpy() for k, v in pred.items()}
-            kpts0, kpts1 = pred["keypoints0"], pred["keypoints1"]
-            matches, conf = pred["matches0"], pred["matching_scores0"]
+        valid_matches = matches > -1
+        filtered_matches = matches[valid_matches]
+        filtered_conf = conf[valid_matches]
+        n_matches = np.sum(valid_matches)
+        score = np.sum(filtered_conf)
+        layout_points = kpts0[valid_matches]
+        crop_points = kpts1[filtered_matches]
 
-            valid_matches = matches > -1
-            filtered_matches = matches[valid_matches]
-            filtered_conf = conf[valid_matches]
-            n_matches = np.sum(valid_matches)
-            pts0 = kpts0[valid_matches]
-            pts1 = kpts1[filtered_matches]
+        # high_conf_matches = filtered_conf > conf_threshold
+        # pts0 = pts0[high_conf_matches]
+        # pts1 = pts1[high_conf_matches]
 
-            # high_conf_matches = filtered_conf > conf_threshold
-            # pts0 = pts0[high_conf_matches]
-            # pts1 = pts1[high_conf_matches]
-
-            logging.info("%s matches found.", n_matches)
-            # for match in matches:
-            #    crop_points.append(keypoints_list_crop[j][match.queryIdx].pt)
-            #    layout_points.append(layout_keypoints[j][match.trainIdx].pt)
-            crop_points = pts1
-            layout_points = pts0
+        logging.info("%s matches found, score=%s", n_matches, score)
 
         all_matches.append(
             {
                 "n_matches": len(crop_points),
+                "score": score,
                 "layout": layout_points,
                 "crop": crop_points,
-                "meta": meta,
+                "meta": loaded["meta"],
             }
         )
 
-    item_max_matches = max(all_matches, key=lambda x: x["n_matches"])
-    layout_meta = item_max_matches["meta"]
+    item_chosen = max(all_matches, key=lambda x: x["n_matches"])
+    layout_meta = item_chosen["meta"]
     transf_matrix, _ = cv2.estimateAffine2D(
-        np.array(item_max_matches["crop"]),
-        np.array(item_max_matches["layout"]),
+        np.array(item_chosen["crop"]),
+        np.array(item_chosen["layout"]),
         method=cv2.USAC_MAGSAC,
         ransacReprojThreshold=5.0,
     )

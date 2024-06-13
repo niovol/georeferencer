@@ -2,6 +2,7 @@
 utils.py
 """
 
+import json
 import os
 from typing import Any, Dict
 
@@ -232,6 +233,42 @@ def save_geotiff(
         ) from e
 
 
+def save_geojson(file_path, coords):
+    """
+    Saves the coordinates of the corners of an image as a GeoJSON file.
+
+    Args:
+        file_path (str): The path where the GeoJSON file will be saved.
+        coords (list of tuple): A list of tuples representing the coordinates
+            of the four corners of the image. The list should contain four tuples,
+            each with two float values (longitude, latitude).
+    """
+    geojson_data = {
+        "type": "FeatureCollection",
+        "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::32637"}},
+        "features": [],
+    }
+    feature = {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [coords[0][0], coords[0][1]],
+                    [coords[1][0], coords[1][1]],
+                    [coords[2][0], coords[2][1]],
+                    [coords[3][0], coords[3][1]],
+                    [coords[0][0], coords[0][1]],
+                ]
+            ],
+        },
+    }
+    geojson_data["features"].append(feature)
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(geojson_data, f, indent=4)
+
+
 def downscale(input_path: str, output_path: str, height: int, width: int) -> None:
     """
     Downscale a raster image to the specified height and width.
@@ -362,6 +399,7 @@ def final_uint8(image):
     )
 
     nir = image[:, :, 3]
+    # nir = np.squeeze(equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1)))
     # gray = equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1))
 
     sobelx = cv2.Sobel(nir, cv2.CV_64F, 1, 0, ksize=3)

@@ -27,3 +27,15 @@ class ResultResponse(BaseModel):
     crs: str
     start: str
     end: str
+
+
+class BugReportResponse(BaseModel):
+    """
+    Bug report response schema
+    """
+
+    row_number: int
+    column_number: int
+    channel_number: int
+    dead_value: int
+    corrected_value: int

@@ -9,8 +9,8 @@ import os
 from datetime import datetime
 
 from .dead_pixels import correct_dead_pixels
-from .georef import align, load_layout_info
-from .utils import load_geotiff, save_geotiff
+from .georef import align, prepare_layout
+from .utils import load_geotiff, save_geojson, save_geotiff
 
 
 def setup_logging(task_id):
@@ -28,7 +28,7 @@ def setup_logging(task_id):
     )
 
 
-def process(layout, crop_name):
+def process(layout_crop_paths, crop_name):
     """
     Process image
     """
@@ -40,7 +40,7 @@ def process(layout, crop_name):
 
     logging.info("Starting georeference procedure. Fixing start time.")
     start_time = datetime.now()
-    aligned = align(layout, corrected_img)
+    aligned = align(layout_crop_paths, corrected_img)
 
     end_time = datetime.now()
     logging.info("Fixing end time.")
@@ -58,7 +58,7 @@ def process(layout, crop_name):
     }
 
 
-def main(layout_path, crop_path, task_id="."):
+def main(layout_path, crop_path, task_id, add_suffix=False):
     """
     Main function
     """
@@ -70,31 +70,42 @@ def main(layout_path, crop_path, task_id="."):
     crop_name = os.path.basename(crop_path)
 
     task_dir = os.path.join("tasks", task_id)
-    corrected_dir = os.path.join(task_dir, "corrected")
     os.makedirs(task_dir, exist_ok=True)
-    os.makedirs(corrected_dir, exist_ok=True)
 
-    coords_csv_file_path = os.path.join(
-        task_dir, f"coords_{crop_name.replace('.tif', '.csv')}"
-    )
-    coords_txt_file_path = os.path.join(
-        task_dir, f"coords_{crop_name.replace('.tif', '.txt')}"
-    )
-    bug_report_file_path = os.path.join(
-        task_dir, f"bug_report_{crop_name.replace('.tif', '.csv')}"
-    )
-    corrected_file_path = os.path.join(corrected_dir, crop_name)
-    aligned_file_path = os.path.join(task_dir, f"aligned_{crop_name}")
+    if add_suffix:
+        coords_csv_file_path = os.path.join(
+            task_dir, f"coords_{crop_name.replace('.tif', '.csv')}"
+        )
+        coords_txt_file_path = os.path.join(
+            task_dir, f"coords_{crop_name.replace('.tif', '.txt')}"
+        )
+        geojson_file_path = os.path.join(
+            task_dir, f"coords_{crop_name.replace('.tif', '.geojson')}"
+        )
+        bug_report_file_path = os.path.join(
+            task_dir, f"bug_report_{crop_name.replace('.tif', '.csv')}"
+        )
+        corrected_file_path = os.path.join(task_dir, f"corrected_{crop_name}")
+        aligned_file_path = os.path.join(task_dir, f"aligned_{crop_name}")
+    else:
+        coords_csv_file_path = os.path.join(task_dir, "coords.csv")
+        coords_txt_file_path = os.path.join(task_dir, "coords.txt")
+        geojson_file_path = os.path.join(task_dir, "coords.geojson")
+        bug_report_file_path = os.path.join(task_dir, "bug_report.csv")
+        corrected_file_path = os.path.join(task_dir, "corrected.tif")
+        aligned_file_path = os.path.join(task_dir, "aligned.tif")
 
     logging.info("Loading layout model")
-    layout = load_layout_info(layout_path)
+    layout_crop_paths = prepare_layout(layout_path)
 
     logging.info("Starting main processing")
-    result = process(layout, crop_path)
+    result = process(layout_crop_paths, crop_path)
 
     logging.info("Saving results")
     coords = result["corners"]
     bug_report = result["bug_report"]
+
+    save_geojson(geojson_file_path, coords)
 
     save_geotiff(
         corrected_file_path,
@@ -165,7 +176,7 @@ def process_all_crops(layout_name, input_folder):
             print(file_name)
             crop_path = os.path.join(input_folder, file_name)
             task_id = "process_folder"
-            main(layout_name, crop_path, task_id)
+            main(layout_name, crop_path, task_id, True)
 
 
 if __name__ == "__main__":
@@ -184,4 +195,4 @@ if __name__ == "__main__":
     if args.input_folder:
         process_all_crops(args.layout_name, args.input_folder)
     else:
-        main(args.layout_name, args.crop_name)
+        main(args.layout_name, args.crop_name, "process_crop", False)
