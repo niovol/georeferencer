@@ -2,6 +2,7 @@
 main.py
 """
 
+# import cProfile
 import argparse
 import csv
 import logging
@@ -28,19 +29,19 @@ def setup_logging(task_id):
     )
 
 
-def process(layout_crop_paths, crop_name):
+def process(layout_crop_paths, crop_path):
     """
     Process image
     """
     logging.info("Loading crop.")
-    crop = load_geotiff(crop_name, layout="hwc")
+    crop = load_geotiff(crop_path, layout="hwc")
 
     logging.info("Correcting dead pixels.")
     corrected_img, bug_report = correct_dead_pixels(crop["data"])
 
     logging.info("Starting georeference procedure. Fixing start time.")
     start_time = datetime.now()
-    aligned = align(layout_crop_paths, corrected_img)
+    aligned = align(layout_crop_paths, corrected_img, crop_path)
 
     end_time = datetime.now()
     logging.info("Fixing end time.")
@@ -192,7 +193,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # profiler = cProfile.Profile()
+    # profiler.enable()
+
     if args.input_folder:
         process_all_crops(args.layout_name, args.input_folder)
     else:
         main(args.layout_name, args.crop_name, "process_crop", False)
+
+    # profiler.disable()
+    # profiler.dump_stats("profile_results.prof")

@@ -8,74 +8,36 @@ import pickle
 
 import cv2
 import numpy as np
+import torch
 from affine import Affine
 
-from .superglue.models.matching import Matching
+from .superglue.models.superglue import SuperGlue
+from .superglue.models.superpoint import SuperPoint
 from .superglue.models.utils import frame2tensor
-from .utils import (
-    downscale,
-    final_uint8,
-    load_geotiff,
-    slice_geotiff,
-)
+from .utils import downscale, final_uint8, load_geotiff, slice_geotiff
 
 
-def save_model(filename, keypoints, descriptors, metas, layout_crop_filenames):
+def save_keypoints(keypoints, keypoints_path):
     """
-    Saves the keypoints, descriptors, and meta information to a file.
+    Saves the keypoints, descriptors, and scores to a file.
     """
-    with open(filename, "wb") as f:
-        all_keypoints_serializable = []
-        for keypoints_for_one_image in keypoints:
-            keypoints_serializable = [
-                [
-                    (kp.pt, kp.size, kp.angle, kp.response, kp.octave, kp.class_id)
-                    for kp in kp_list
-                ]
-                for kp_list in keypoints_for_one_image
-            ]
-            all_keypoints_serializable.append(keypoints_serializable)
-        pickle.dump(
-            (all_keypoints_serializable, descriptors, metas, layout_crop_filenames), f
-        )
+    with open(keypoints_path, "wb") as f:
+        pickle.dump(keypoints, f)
 
 
-def load_model(filename):
+def load_keypoints(filename):
     """
-    Loads the keypoints, descriptors, and meta information from a file.
+    Loads the keypoints, descriptors, and scores from a file.
     """
     with open(filename, "rb") as f:
-        all_keypoints_serializable, descriptors, metas, layout_crop_filenames = (
-            pickle.load(f)
-        )
-        # Convert keypoints back to cv2.KeyPoint objects
-        keypoints = [
-            [
-                [
-                    cv2.KeyPoint(
-                        x=kp[0][0],
-                        y=kp[0][1],
-                        size=kp[1],
-                        angle=kp[2],
-                        response=kp[3],
-                        octave=kp[4],
-                        class_id=kp[5],
-                    )
-                    for kp in kp_list
-                ]
-                for kp_list in keypoints_serializable
-            ]
-            for keypoints_serializable in all_keypoints_serializable
-        ]
-        return keypoints, descriptors, metas, layout_crop_filenames
+        keypoints = pickle.load(f)
+        return keypoints
 
 
 def prepare_layout(layout_path):
     """
     Loads the layout info
     """
-
-    # filename_sift = f"models/sift/{os.path.basename(layout_path)}.pkl"
     os.makedirs("cache/layout_downscale", exist_ok=True)
 
     filename_downscale = f"cache/layout_downscale/{os.path.basename(layout_path)}"
@@ -91,8 +53,6 @@ def prepare_layout(layout_path):
             filename = os.path.basename(layout_path).replace(".tif", f"_{i}_{j}.tif")
             layout_crop_path = f"cache/layout_downscale_crops/{filename}"
             layout_crop_paths.append(layout_crop_path)
-
-    # save_model(filename_sift, keypoints, descriptors, metas, layout_crop_filenames)
 
     return layout_crop_paths
 
@@ -142,7 +102,7 @@ def multiply_affine_arrays(array1, array2):
     return mult[:2, :]
 
 
-def align(layout_crop_paths, crop_image):
+def align(layout_crop_paths, crop_image, crop_path):
     """
     Aligns a cropped image to a layout using keypoints and descriptors.
 
@@ -155,20 +115,25 @@ def align(layout_crop_paths, crop_image):
     Returns:
         dict: A dictionary containing the new corners and updated metadata.
     """
-    matching_config = {
-        "superpoint": {
-            "nms_radius": 4,
-            "keypoint_threshold": 0.005,
-            "max_keypoints": 2048,
-        },
-        "superglue": {
-            "weights": "outdoor",
-            "sinkhorn_iterations": 20,
-            "match_threshold": 0.2,
-            "descriptor_dim": 256,
-        },
+
+    torch.set_grad_enabled(False)
+
+    keypoints_dir = "cache/keypoints"
+    os.makedirs(keypoints_dir, exist_ok=True)
+
+    superpoint_config = {
+        "nms_radius": 4,
+        "keypoint_threshold": 0.005,
+        "max_keypoints": 2048,
     }
-    matching = Matching(matching_config).eval().to("cpu")
+    superglue_config = {
+        "weights": "outdoor",
+        "sinkhorn_iterations": 20,
+        "match_threshold": 0.2,
+        "descriptor_dim": 256,
+    }
+    superpoint = SuperPoint(superpoint_config).eval().to("cpu")
+    superglue = SuperGlue(superglue_config).eval().to("cpu")
 
     all_matches = []
     for layout_crop_path in layout_crop_paths:
@@ -180,8 +145,36 @@ def align(layout_crop_paths, crop_image):
             np.squeeze(final_uint8(crop_image)).astype("float32"), "cpu"
         )
 
-        pred = matching({"image0": inp0, "image1": inp1})
-        pred = {k: v[0].detach().cpu().numpy() for k, v in pred.items()}
+        keypoint0_path = os.path.join(
+            keypoints_dir, os.path.basename(layout_crop_path).replace(".tif", ".pkl")
+        )
+        keypoint1_path = os.path.join(
+            keypoints_dir, os.path.basename(crop_path).replace(".tif", ".pkl")
+        )
+
+        if os.path.exists(keypoint0_path):
+            pred0 = load_keypoints(keypoint0_path)
+        else:
+            # pylint: disable=not-callable
+            pred0 = {k + "0": v for k, v in superpoint({"image": inp0}).items()}
+            save_keypoints(pred0, keypoint0_path)
+
+        if os.path.exists(keypoint1_path):
+            pred1 = load_keypoints(keypoint1_path)
+        else:
+            pred1 = {k + "1": v for k, v in superpoint({"image": inp1}).items()}
+            save_keypoints(pred1, keypoint1_path)
+
+        pred = {**pred0, **pred1}
+        data = {"image0": inp0, "image1": inp1, **pred}
+
+        for k in data:
+            if isinstance(data[k], (list, tuple)):
+                data[k] = torch.stack(data[k])
+
+        pred = {**pred, **superglue(data)}
+        pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
+
         kpts0, kpts1 = pred["keypoints0"], pred["keypoints1"]
         matches, conf = pred["matches0"], pred["matching_scores0"]
 
