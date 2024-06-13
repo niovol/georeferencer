@@ -14,6 +14,8 @@
 
 ## Использование
 
+Вы можете использовать сервис как по API, так и с помощью скрипта.
+
 ### Использование с помощью API
 
 Для обработки изображений сервис предоставляет API для взаимодействия. Вы также можете использовать такие инструменты, как `curl` или Postman.
@@ -39,6 +41,8 @@ with open(file_path, 'rb') as f:
 {'task_id': '2823d72a-0760-4219-a75b-e50e176a1287'}
 ```
 
+Для получения результатов обработки используйте в запросах в качестве параметра полученный `task_id`.
+
 ### Использование с помощью скрипта
 
 Чтобы обработать изображения с помощью скрипта, вы можете запустить его внутри Docker-контейнера или настроить локальную среду Python.
@@ -48,7 +52,8 @@ with open(file_path, 'rb') as f:
 Запустите следующую команду:
 
 ```bash
-docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.main --layout_name <layout_name> --crop_name <path_to_crop_image_inside_project_dir>
+docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.main \ 
+    --layout_name <layout_name> --crop_name <path_to_crop_image_inside_project_dir>
 ```
 
 #### Использование скрипта локально
@@ -65,7 +70,7 @@ docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.mai
     python main.py --crop_name <path_to_crop_image> --layout_name <path_to_layout_image>
     ```
 
-## Эндпоинты
+## API
 
 ### POST `/process`
 
@@ -99,12 +104,12 @@ docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.mai
 
 ### GET `/bug_report`
 
-Получает отчет об ошибках для коррекции битых пикселей.
+Получает отчет о коррекции битых пикселей.
 
 - **Параметры:**
   - `task_id` (string): ID задачи обработки.
 - **Ответ:**
-  - JSON-объект с деталями отчета об ошибках.
+  - JSON-объект с деталями отчета.
 
 ### GET `/download/geojson`
 
@@ -135,7 +140,7 @@ docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.mai
 
 ### GET `/download/bug_report`
 
-Скачивает отчет об ошибках в формате CSV.
+Скачивает отчет о коррекции битых пикселей в формате CSV.
 
 - **Параметры:**
   - `task_id` (string): ID задачи обработки.

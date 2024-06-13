@@ -66,31 +66,7 @@ The service will be available at `http://localhost:8000`.
 
 ## Usage
 
-### Using the Script
-
-To process images using the script, you can either run it inside the Docker container or set up a local Python environment.
-
-#### Using the Script in Docker Container
-
-Run the following command:
-
-```bash
-docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.main --layout_name <layout_name> --crop_name <path_to_crop_image_inside_project_dir>
-```
-
-#### Using the Script Locally
-
-1. Set up a Python environment and install the dependencies:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-2. Run the script:
-
-    ```bash
-    python main.py --crop_name <path_to_crop_image> --layout_name <path_to_layout_image>
-    ```
+You can use the service either via API or with a script.
 
 ### Using the API
 
@@ -116,6 +92,35 @@ Response:
 ```python
 {'task_id': '2823d72a-0760-4219-a75b-e50e176a1287'}
 ```
+
+To get the processing results, use the received `task_id` as a parameter in your requests.
+
+### Using the Script
+
+To process images using the script, you can either run it inside the Docker container or set up a local Python environment.
+
+#### Using the Script in Docker Container
+
+Run the following command:
+
+```bash
+docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.main \ 
+    --layout_name <layout_name> --crop_name <path_to_crop_image_inside_project_dir>
+```
+
+#### Using the Script Locally
+
+1. Set up a Python environment and install the dependencies:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2. Run the script:
+
+    ```bash
+    python main.py --crop_name <path_to_crop_image> --layout_name <path_to_layout_image>
+    ```
 
 ## API Endpoints
 
@@ -190,7 +195,7 @@ Downloads the corrected pixels in the original reference system.
 
 ### GET `/download/bug_report`
 
-Downloads the bug report as a CSV file.
+Downloads the bug report for dead pixel correction as a CSV file.
 
 - **Parameters:**
   - `task_id` (string): The ID of the processing task.
