@@ -322,7 +322,7 @@ def equalize_hist(img):
     img_hist_eq = equalize_hist_16bit_exclude_zero(img) / 65535
     img_hist_eq_8bit = (img_hist_eq * 254 + 1).astype("uint8")
 
-    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(16, 16))
     img_clahe = np.zeros_like(img_hist_eq_8bit)
     for i in range(img.shape[2]):
         img_clahe[:, :, i] = clahe.apply(img_hist_eq_8bit[:, :, i])
@@ -393,28 +393,23 @@ def megagray(img):
     )
 
 
+def sobel(gray):
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    return np.sqrt(sobelx**2 + sobely**2)
+
+
 def final_uint8(image):
-    gray = scale_image_percentile(megagray(image)).reshape(
+    nir = image[:, :, 3]
+    # nir_equalized = np.squeeze(
+    #    equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1))
+    # )
+    # good2 = scale_image_percentile(sobel(nir_equalized), 30, 99.5).reshape(
+    #    image.shape[0], image.shape[1], 1
+    # )
+
+    contours = scale_image_percentile(sobel(nir), 30, 99.5).reshape(
         image.shape[0], image.shape[1], 1
     )
 
-    nir = image[:, :, 3]
-    # nir = np.squeeze(equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1)))
-    # gray = equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1))
-
-    sobelx = cv2.Sobel(nir, cv2.CV_64F, 1, 0, ksize=3)
-    sobely = cv2.Sobel(nir, cv2.CV_64F, 0, 1, ksize=3)
-    sobel = np.sqrt(sobelx**2 + sobely**2)
-    sobel = (
-        cv2.normalize(sobel, None, 0, 255, cv2.NORM_MINMAX)
-        .astype("uint8")
-        .reshape(sobel.shape[0], sobel.shape[1], 1)
-    )
-
-    final = (
-        np.clip(0.9 * sobel.astype("float32") + 0.1 * gray.astype("float32"), 1, 255)
-        .astype("uint8")
-        .reshape(image.shape[0], image.shape[1], 1)
-    )
-
-    return final
+    return contours

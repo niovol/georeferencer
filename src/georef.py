@@ -115,6 +115,7 @@ def align(layout_crop_paths, crop_image, crop_path):
     Returns:
         dict: A dictionary containing the new corners and updated metadata.
     """
+    # pylint: disable=not-callable
 
     torch.set_grad_enabled(False)
 
@@ -123,7 +124,7 @@ def align(layout_crop_paths, crop_image, crop_path):
 
     superpoint_config = {
         "nms_radius": 4,
-        "keypoint_threshold": 0.005,
+        "keypoint_threshold": 0.01,
         "max_keypoints": 2048,
     }
     superglue_config = {
@@ -155,7 +156,6 @@ def align(layout_crop_paths, crop_image, crop_path):
         if os.path.exists(keypoint0_path):
             pred0 = load_keypoints(keypoint0_path)
         else:
-            # pylint: disable=not-callable
             pred0 = {k + "0": v for k, v in superpoint({"image": inp0}).items()}
             save_keypoints(pred0, keypoint0_path)
 
@@ -202,7 +202,7 @@ def align(layout_crop_paths, crop_image, crop_path):
             }
         )
 
-    item_chosen = max(all_matches, key=lambda x: x["n_matches"])
+    item_chosen = max(all_matches, key=lambda x: x["score"])
     layout_meta = item_chosen["meta"]
     transf_matrix, _ = cv2.estimateAffine2D(
         np.array(item_chosen["crop"]),

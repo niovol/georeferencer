@@ -9,6 +9,7 @@ services:
     volumes:
       - .:/app
       - /layouts:/layouts
+      - /mnt:/mnt
     shm_size: '2gb'
     ports:
       - 8000:8000
