@@ -16,21 +16,28 @@
 
 ### Использование с помощью API
 
-Для обработки изображений через API сервис предоставляет эндпоинты, указанные ниже в разделе "Эндпоинты". Вы также можете использовать инструменты, такие как `curl` или Postman.
+Для обработки изображений сервис предоставляет API для взаимодействия. Вы также можете использовать такие инструменты, как `curl` или Postman.
 
 #### Пример
 
-1. Загрузите изображение для обработки:
+```python
+import requests
+  
+file_path = 'path_to_your_image.tif'
+layout_name = 'your_layout_image.tif'
+url = "http://localhost:8000/process"
+with open(file_path, 'rb') as f:
+    files = {'file': (file_path, f)}
+    data = {'layout_name': layout_name}
+    response = requests.post(url, data=data, files=files)
+    print(response.json())
+```
 
-    ```bash
-    curl -X POST "http://localhost:8000/process" -F "layout_name=<layout_filename>" -F "file=@<path_to_image>"
-    ```
+Ответ:
 
-2. Проверьте результаты:
-
-    ```bash
-    curl -X GET "http://localhost:8000/coords?task_id=<task_id>"
-    ```
+```python
+{'task_id': '2823d72a-0760-4219-a75b-e50e176a1287'}
+```
 
 ### Использование с помощью скрипта
 
@@ -77,7 +84,18 @@ docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.mai
 - **Параметры:**
   - `task_id` (string): ID задачи обработки.
 - **Ответ:**
-  - JSON-объект с координатами и другой информацией об обработке.
+  - JSON-объект с координатами и другой информацией об обработке:
+    {
+      "layout_name": "имя подложки",
+      "crop_name": "имя снимка",
+      "ul": "координаты верхнего левого угла",
+      "ur": "координаты верхнего правого угла",
+      "br": "координаты нижнего правого угла",
+      "bl": "координаты нижнего левого угла",
+      "crs": "система координат",
+      "start": "время начала обработки",
+      "end": "время окончания обработки"
+    }
 
 ### GET `/bug_report`
 
@@ -123,3 +141,15 @@ docker run --rm -v .:/app -v /layouts:<layouts_dir> nikolove18 python -m src.mai
   - `task_id` (string): ID задачи обработки.
 - **Ответ:**
   - CSV-файл.
+
+## Логи и результаты
+
+Логи, результаты обработки и отчеты хранятся в директории tasks/{task_id}. В этой директории находятся:
+
+- `process.log` - файл с логами процесса обработки.
+- `coords.csv` - файл с координатами углов сцены и дополнительными параметрами обработки.
+- `coords.txt` - файл с координатами углов сцены
+- `coords.geojson` - GeoJSON с координатами углов сцены в системе координат подложки.
+- `bug_report.csv` - отчет по восстановленным битым пикселям.
+- `corrected.tif` - файл GeoTIFF с восстановленными битыми пикселями.
+- `aligned.tif` - файл GeoTIFF сцены с географической привязкой к подложке.

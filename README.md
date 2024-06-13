@@ -7,10 +7,11 @@
 3. [Installation](#installation)
 4. [Usage](#usage)
 5. [API Endpoints](#api-endpoints)
+6. [Logs and Results](#logs-and-results)
 
 ## Introduction
 
-This project is developed as part of the hackathon "Leaders of Digital Transformation" task "Efficient Processing Algorithm for Satellite Images of the Russian Orbital Group". The service processes satellite images to determine their geographical location accurately, corrects dead pixels, and provides the output in various formats. The service is fully automated, ensuring minimal latency and high efficiency.
+This project was developed as part of the hackathon "Leaders of Digital Transformation". The service is designed for determining the geographical location of satellite image scenes and correcting dead pixels. The service is fully automated and requires no intermediate configuration during operation.
 
 ## Features
 
@@ -36,7 +37,26 @@ This project is developed as part of the hackathon "Leaders of Digital Transform
     cd <repository_directory>
     ```
 
-2. Build and start the service using Docker Compose:
+2. Configure the `docker-compose.yml` file, specifying the path to the layouts directory on your local machine. Replace `/layouts` on the right side of the colon with the path to your layouts directory. Example:
+
+    ```yaml
+    services:
+      fastapi-app:
+        container_name: nikolove18_fastapi
+        image: nikolove18
+        build:
+          context: ./
+          dockerfile: Dockerfile
+        command: uvicorn src.api.server:app --reload --host 0.0.0.0
+        volumes:
+          - .:/app
+          - /layouts:/path/to/local/layouts
+        shm_size: '2gb'
+        ports:
+          - 8000:8000
+    ```
+
+3. Build and start the service using Docker Compose:
 
     ```bash
     docker-compose up --build
@@ -48,7 +68,7 @@ The service will be available at `http://localhost:8000`.
 
 ### Using the Script
 
-To process images using the script, you can either run the script inside the Docker container or set up a local Python environment.
+To process images using the script, you can either run it inside the Docker container or set up a local Python environment.
 
 #### Using the Script in Docker Container
 
@@ -78,17 +98,24 @@ To process images via API, you can use tools like `curl` or Postman.
 
 #### Example
 
-1. Upload an image for processing:
+```python
+import requests
 
-    ```bash
-    curl -X POST "http://localhost:8000/process" -F "layout_name=<layout_filename>" -F "file=@<path_to_image>"
-    ```
+file_path = 'path_to_your_image.tif'
+layout_name = 'your_layout_image.tif'
+url = "http://localhost:8000/process"
+with open(file_path, 'rb') as f:
+    files = {'file': (file_path, f)}
+    data = {'layout_name': layout_name}
+    response = requests.post(url, data=data, files=files)
+    print(response.json())
+```
 
-2. Check the results:
+Response:
 
-    ```bash
-    curl -X GET "http://localhost:8000/coords?task_id=<task_id>"
-    ```
+```python
+{'task_id': '2823d72a-0760-4219-a75b-e50e176a1287'}
+```
 
 ## API Endpoints
 
@@ -109,7 +136,21 @@ Gets the georeferenced coordinates of the processed image.
 - **Parameters:**
   - `task_id` (string): The ID of the processing task.
 - **Response:**
-  - JSON object with the coordinates and other processing details.
+  - JSON object with the coordinates and other processing details:
+
+    ```json
+    {
+      "layout_name": "layout filename",
+      "crop_name": "crop filename",
+      "ul": "upper left coordinates",
+      "ur": "upper right coordinates",
+      "br": "bottom right coordinates",
+      "bl": "bottom left coordinates",
+      "crs": "coordinate reference system",
+      "start": "processing start time",
+      "end": "processing end time"
+    }
+    ```
 
 ### GET `/bug_report`
 
@@ -155,3 +196,15 @@ Downloads the bug report as a CSV file.
   - `task_id` (string): The ID of the processing task.
 - **Response:**
   - CSV file.
+
+## Logs and Results
+
+Logs, processing results, and reports are stored in the `tasks/{task_id}` directory. This directory contains:
+
+- `process.log` - log file of the processing task.
+- `coords.csv` - file with the coordinates of the scene corners and additional processing parameters.
+- `coords.txt` - file with the coordinates of the scene corners.
+- `coords.geojson` - GeoJSON with the coordinates of the scene corners in the layout's coordinate system.
+- `bug_report.csv` - report on restored dead pixels.
+- `corrected.tif` - GeoTIFF file with restored dead pixels.
+- `aligned.tif` - GeoTIFF scene file with geographical referencing to the layout.
