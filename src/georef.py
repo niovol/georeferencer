@@ -58,7 +58,7 @@ def prepare_layout(layout_path: str) -> list:
 
     filename_downscale = f"cache/layout_downscale/{os.path.basename(layout_path)}"
     if not os.path.exists(filename_downscale):
-        downscale(layout_path, filename_downscale, 1600, 1600)
+        downscale(layout_path, filename_downscale, 1600, 1600, (0, 3))
         slice_geotiff(
             filename_downscale, "cache/layout_downscale_crops", (8, 5), (160, 100)
         )
@@ -155,10 +155,10 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
     for layout_crop_path in layout_crop_paths:
         loaded = load_geotiff(layout_crop_path, layout="hwc")
         inp0 = frame2tensor(
-            np.squeeze(final_uint8(loaded["data"], 3)).astype("float32"), "cpu"
+            np.squeeze(final_uint8(loaded["data"], "layout")).astype("float32"), "cpu"
         )
         inp1 = frame2tensor(
-            np.squeeze(final_uint8(crop_image, 0)).astype("float32"), "cpu"
+            np.squeeze(final_uint8(crop_image, "crop")).astype("float32"), "cpu"
         )
 
         keypoint0_path = os.path.join(
@@ -201,10 +201,6 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
         layout_points = kpts0[valid_matches]
         crop_points = kpts1[filtered_matches]
 
-        # high_conf_matches = filtered_conf > conf_threshold
-        # pts0 = pts0[high_conf_matches]
-        # pts1 = pts1[high_conf_matches]
-
         logging.info("%s matches found, score=%s", n_matches, score)
 
         all_matches.append(
@@ -240,6 +236,7 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
     new_meta["transform"] = new_affine
     new_meta["width"] = w
     new_meta["height"] = h
+    new_meta["count"] = 4
 
     return {
         "corners": new_corners,

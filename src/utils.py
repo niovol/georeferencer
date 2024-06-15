@@ -269,7 +269,13 @@ def save_geojson(file_path, coords):
         json.dump(geojson_data, f, indent=4)
 
 
-def downscale(input_path: str, output_path: str, height: int, width: int) -> None:
+def downscale(
+    input_path: str,
+    output_path: str,
+    height: int,
+    width: int,
+    channels: Tuple[int],
+) -> None:
     """
     Downscale a raster image to the specified height and width.
 
@@ -287,14 +293,16 @@ def downscale(input_path: str, output_path: str, height: int, width: int) -> Non
             (src.width / width), (src.height / height)
         )
 
+        new_count = len(channels)
         new_meta = src.meta.copy()
         new_meta.update({"transform": transform, "width": width, "height": height})
+        new_meta["count"] = new_count
 
         with rasterio.open(output_path, "w", **new_meta) as dst:
-            for i in range(1, src.count + 1):
+            for i in range(new_count):
                 reproject(
-                    source=rasterio.band(src, i),
-                    destination=rasterio.band(dst, i),
+                    source=rasterio.band(src, channels[i] + 1),
+                    destination=rasterio.band(dst, i + 1),
                     src_transform=src.transform,
                     src_crs=src.crs,
                     dst_transform=transform,
@@ -423,7 +431,7 @@ def sobel(gray: np.ndarray) -> np.ndarray:
     return np.sqrt(sobelx**2 + sobely**2)
 
 
-def final_uint8(image: np.ndarray, channel: int) -> np.ndarray:
+def final_uint8(image: np.ndarray, image_type: str) -> np.ndarray:
     """
     Generate a final uint8 image by applying Sobel operator and scaling.
 
@@ -435,7 +443,7 @@ def final_uint8(image: np.ndarray, channel: int) -> np.ndarray:
         numpy.ndarray: Final uint8 image.
     """
     red = image[:, :, 0]
-    nir = image[:, :, 3]
+    nir = image[:, :, 1] if image_type == "layout" else image[:, :, 3]
     mask = 1 - 0.57 * (np.clip(red / 4000, 1, 2) - 1)
     gray = nir * mask
 
@@ -453,7 +461,7 @@ def final_uint8(image: np.ndarray, channel: int) -> np.ndarray:
     # )
 
     contours = scale_image_percentile(
-        sobel(gray if channel == 3 else gray - red), 35, 99.5
+        sobel(gray if image_type == "layout" else gray - red), 35, 99.5
     ).reshape(image.shape[0], image.shape[1], 1)
 
     return contours
