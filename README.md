@@ -70,18 +70,18 @@ You can use the service either via API or with a script.
 
 ### Using the API
 
-To process images via API, you can use tools like `curl` or Postman.
+To process images, the service provides an API for interaction. You can also use tools like `curl` or Postman.
 
 #### Example
 
 ```python
 import requests
-
-file_path = 'path_to_your_image.tif'
+  
+scene_path = 'path_to_your_image.tif'
 layout_name = 'your_layout_image.tif'
-url = "http://localhost:8000/process"
-with open(file_path, 'rb') as f:
-    files = {'file': (file_path, f)}
+url = 'http://localhost:8000/process'
+with open(scene_path, 'rb') as f:
+    files = {'file': (scene_path, f)}
     data = {'layout_name': layout_name}
     response = requests.post(url, data=data, files=files)
     print(response.json())
@@ -93,7 +93,29 @@ Response:
 {'task_id': '2823d72a-0760-4219-a75b-e50e176a1287'}
 ```
 
-To get the processing results, use the received `task_id` as a parameter in your requests.
+To get the processing results, use the received `task_id` as a parameter in your requests:
+
+```python
+task_id = '2823d72a-0760-4219-a75b-e50e176a1287'  # ID obtained when starting the task
+url = f"http://localhost:8000/coords?task_id={task_id}"
+
+response = requests.get(url)
+print(response.json())
+```
+
+Response:
+
+{
+  "layout_name": "layout_2021-06-15.tif",
+  "crop_name": "crop_0_0_0000.tif",
+  "ul": "402343.0; 5796618.8",
+  "ur": "414068.6; 5796388.8",
+  "br": "413511.5; 5778375.4",
+  "bl": "401785.8; 5778605.4",
+  "crs": "EPSG:32637",
+  "start": "2024-06-15T11:52:35",
+  "end": "2024-06-15T11:52:53"
+}
 
 ### Using the Script
 
