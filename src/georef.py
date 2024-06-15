@@ -130,7 +130,7 @@ def align(layout_crop_paths, crop_image, crop_path):
     superglue_config = {
         "weights": "outdoor",
         "sinkhorn_iterations": 20,
-        "match_threshold": 0.2,
+        "match_threshold": 0.5,
         "descriptor_dim": 256,
     }
     superpoint = SuperPoint(superpoint_config).eval().to("cpu")
@@ -140,10 +140,10 @@ def align(layout_crop_paths, crop_image, crop_path):
     for layout_crop_path in layout_crop_paths:
         loaded = load_geotiff(layout_crop_path, layout="hwc")
         inp0 = frame2tensor(
-            np.squeeze(final_uint8(loaded["data"])).astype("float32"), "cpu"
+            np.squeeze(final_uint8(loaded["data"], 3)).astype("float32"), "cpu"
         )
         inp1 = frame2tensor(
-            np.squeeze(final_uint8(crop_image)).astype("float32"), "cpu"
+            np.squeeze(final_uint8(crop_image, 0)).astype("float32"), "cpu"
         )
 
         keypoint0_path = os.path.join(

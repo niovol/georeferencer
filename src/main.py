@@ -153,10 +153,10 @@ def main(layout_path, crop_path, task_id, add_suffix=False):
             {
                 "layout_name": os.path.basename(layout_path),
                 "crop_name": crop_name,
-                "ul": f"{coords[0][0]:.3f}; {coords[0][1]:.3f}",
-                "ur": f"{coords[1][0]:.3f}; {coords[1][1]:.3f}",
-                "br": f"{coords[2][0]:.3f}; {coords[2][1]:.3f}",
-                "bl": f"{coords[3][0]:.3f}; {coords[3][1]:.3f}",
+                "ul": f"{coords[0][0]:.1f}; {coords[0][1]:.1f}",
+                "ur": f"{coords[1][0]:.1f}; {coords[1][1]:.1f}",
+                "br": f"{coords[2][0]:.1f}; {coords[2][1]:.1f}",
+                "bl": f"{coords[3][0]:.1f}; {coords[3][1]:.1f}",
                 "crs": "EPSG:32637",
                 "start": result["start"].strftime("%Y-%m-%dT%H:%M:%S"),
                 "end": result["end"].strftime("%Y-%m-%dT%H:%M:%S"),
@@ -165,7 +165,7 @@ def main(layout_path, crop_path, task_id, add_suffix=False):
 
     with open(coords_txt_file_path, "w", encoding="utf-8") as txtfile:
         for coord in coords:
-            txtfile.write(f"{coord[0]:.3f}; {coord[1]:.3f}\n")
+            txtfile.write(f"{coord[0]:.1f}; {coord[1]:.1f}\n")
 
 
 def process_all_crops(layout_name, input_folder):

@@ -25,11 +25,11 @@
 ```python
 import requests
   
-file_path = 'path_to_your_image.tif'
+scene_path = 'path_to_your_image.tif'
 layout_name = 'your_layout_image.tif'
-url = "http://localhost:8000/process"
-with open(file_path, 'rb') as f:
-    files = {'file': (file_path, f)}
+url = 'http://localhost:8000/process'
+with open(scene_path, 'rb') as f:
+    files = {'file': (scene_path, f)}
     data = {'layout_name': layout_name}
     response = requests.post(url, data=data, files=files)
     print(response.json())
@@ -41,7 +41,29 @@ with open(file_path, 'rb') as f:
 {'task_id': '2823d72a-0760-4219-a75b-e50e176a1287'}
 ```
 
-Для получения результатов обработки используйте в запросах в качестве параметра полученный `task_id`.
+Для получения результатов обработки используйте в запросах в качестве параметра полученный `task_id`:
+
+```python
+task_id = '2823d72a-0760-4219-a75b-e50e176a1287'  # ID, полученный при запуске задачи
+url = f"http://localhost:8000/coords?task_id={task_id}"
+
+response = requests.get(url)
+print(response.json())
+```
+
+Ответ:
+
+{
+  "layout_name": "имя подложки",
+  "crop_name": "имя снимка",
+  "ul": "координаты верхнего левого угла",
+  "ur": "координаты верхнего правого угла",
+  "br": "координаты нижнего правого угла",
+  "bl": "координаты нижнего левого угла",
+  "crs": "EPSG:32637",
+  "start": "2024-06-15T09:52:58",
+  "end": "2024-06-15T09:53:18"
+}
 
 ### Использование с помощью скрипта
 

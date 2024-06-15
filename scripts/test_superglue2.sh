@@ -1,1 +1,1 @@
-python superglue/match_pairs.py --input_dir png --input_pairs scripts/nikolove2.txt --viz --max_keypoints 32768 --resize -1 --force_cpu --superglue outdoor
+python src/superglue/match_pairs.py --input_dir png --input_pairs scripts/nikolove2.txt --viz --max_keypoints 32768 --resize -1 --force_cpu --superglue outdoor
