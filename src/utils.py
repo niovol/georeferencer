@@ -402,7 +402,7 @@ def sobel(gray):
 def final_uint8(image, channel):
     red = image[:, :, 0]
     nir = image[:, :, 3]
-    mask = 1.5 - 0.5 * np.clip(red / 4000, 1, 2)
+    mask = 1 - 0.57 * (np.clip(red / 4000, 1, 2) - 1)
     gray = nir * mask
 
     nodata = np.where(gray > 64000, True, np.where(gray == 0, True, False))
@@ -413,8 +413,13 @@ def final_uint8(image, channel):
     # good2 = scale_image_percentile(sobel(nir_equalized), 30, 99.5).reshape(
     #    image.shape[0], image.shape[1], 1
     # )
+    # megasobel = sobel(image[:, :, 0]) + sobel(image[:, :, 3])
+    # megacontours = scale_image_percentile(megasobel, 2, 99.5).reshape(
+    #     image.shape[0], image.shape[1], 1
+    # )
+
     contours = scale_image_percentile(
-        sobel(gray if channel == 3 else 5000 + gray - red), 2, 99.5
+        sobel(gray if channel == 3 else gray - red), 30, 99.5
     ).reshape(image.shape[0], image.shape[1], 1)
 
     return contours

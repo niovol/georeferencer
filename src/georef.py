@@ -17,26 +17,42 @@ from .superglue.models.utils import frame2tensor
 from .utils import downscale, final_uint8, load_geotiff, slice_geotiff
 
 
-def save_keypoints(keypoints, keypoints_path):
+def save_keypoints(keypoints: dict, keypoints_path: str) -> None:
     """
     Saves the keypoints, descriptors, and scores to a file.
+
+    Args:
+        keypoints (dict): Keypoints, descriptors, and scores to save.
+        keypoints_path (str): Path to the file where the keypoints will be saved.
     """
     with open(keypoints_path, "wb") as f:
         pickle.dump(keypoints, f)
 
 
-def load_keypoints(filename):
+def load_keypoints(filename: str) -> dict:
     """
     Loads the keypoints, descriptors, and scores from a file.
+
+    Args:
+        filename (str): Path to the file containing the keypoints.
+
+    Returns:
+        dict: Loaded keypoints, descriptors, and scores.
     """
     with open(filename, "rb") as f:
         keypoints = pickle.load(f)
         return keypoints
 
 
-def prepare_layout(layout_path):
+def prepare_layout(layout_path: str) -> list:
     """
-    Loads the layout info
+    Loads and prepares the layout information.
+
+    Args:
+        layout_path (str): Path to the layout file.
+
+    Returns:
+        list: Paths to the cropped layout images.
     """
     os.makedirs("cache/layout_downscale", exist_ok=True)
 
@@ -57,7 +73,7 @@ def prepare_layout(layout_path):
     return layout_crop_paths
 
 
-def convert_affine_to_numpy(affine: Affine):
+def convert_affine_to_numpy(affine: Affine) -> np.ndarray:
     """
     Converts an Affine object to a NumPy array.
 
@@ -70,7 +86,7 @@ def convert_affine_to_numpy(affine: Affine):
     return np.array([[affine.a, affine.b, affine.c], [affine.d, affine.e, affine.f]])
 
 
-def convert_numpy_to_affine(array):
+def convert_numpy_to_affine(array: np.ndarray) -> Affine:
     """
     Converts a NumPy array to an Affine object.
 
@@ -85,7 +101,7 @@ def convert_numpy_to_affine(array):
     )
 
 
-def multiply_affine_arrays(array1, array2):
+def multiply_affine_arrays(array1: np.ndarray, array2: np.ndarray) -> np.ndarray:
     """
     Multiplies two affine transformation arrays.
 
@@ -102,15 +118,14 @@ def multiply_affine_arrays(array1, array2):
     return mult[:2, :]
 
 
-def align(layout_crop_paths, crop_image, crop_path):
+def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> dict:
     """
     Aligns a cropped image to a layout using keypoints and descriptors.
 
     Args:
-        layout_keypoints (list): List of keypoints from the layout.
-        layout_descriptors (list): List of descriptors from the layout.
-        layout_meta (dict): Metadata of the layout, including the affine transformation.
+        layout_crop_paths (list): List of paths to the cropped layout images.
         crop_image (numpy.ndarray): The cropped image to be aligned.
+        crop_path (str): Path to the cropped image file.
 
     Returns:
         dict: A dictionary containing the new corners and updated metadata.
