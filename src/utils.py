@@ -4,7 +4,7 @@ utils.py
 
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import cv2
 import numpy as np
@@ -303,8 +303,16 @@ def downscale(input_path: str, output_path: str, height: int, width: int) -> Non
                 )
 
 
-def equalize_hist_16bit_exclude_zero(img):
-    """Equalizes the histogram of a 16-bit image, excluding zero values."""
+def equalize_hist_16bit_exclude_zero(img: np.ndarray) -> np.ndarray:
+    """
+    Equalizes the histogram of a 16-bit image, excluding zero values.
+
+    Args:
+        img (numpy.ndarray): Input 16-bit image.
+
+    Returns:
+        numpy.ndarray: Histogram-equalized image.
+    """
     img_hist_eq = np.zeros_like(img)
     for i in range(img.shape[2]):
         channel = img[:, :, i]
@@ -318,7 +326,16 @@ def equalize_hist_16bit_exclude_zero(img):
     return img_hist_eq
 
 
-def equalize_hist(img):
+def equalize_hist(img: np.ndarray) -> np.ndarray:
+    """
+    Equalizes the histogram of an image and applies CLAHE.
+
+    Args:
+        img (numpy.ndarray): Input image.
+
+    Returns:
+        numpy.ndarray: CLAHE applied histogram-equalized image.
+    """
     img_hist_eq = equalize_hist_16bit_exclude_zero(img) / 65535
     img_hist_eq_8bit = (img_hist_eq * 254 + 1).astype("uint8")
 
@@ -331,8 +348,27 @@ def equalize_hist(img):
 
 
 def slice_geotiff(
-    input_path, output_dir, grid_size, overlap=(0, 0), margins=(0, 0, 0, 0)
-):
+    input_path: str,
+    output_dir: str,
+    grid_size: Tuple[int, int],
+    overlap: Tuple[int, int] = (0, 0),
+    margins: Tuple[int, int, int, int] = (0, 0, 0, 0),
+) -> None:
+    """
+    Slices a GeoTIFF image into smaller tiles.
+
+    Args:
+        input_path (str): Path to the input GeoTIFF file.
+        output_dir (str): Directory to save the sliced tiles.
+        grid_size (tuple): Number of tiles in the form (columns, rows).
+        overlap (tuple, optional): Overlap between tiles in the form
+            (x_overlap, y_overlap).
+        margins (tuple, optional): Margins to exclude from slicing in the form
+            (left, right, top, bottom).
+
+    Returns:
+        None
+    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -372,34 +408,32 @@ def slice_geotiff(
                     dst.write(src.read(window=window))
 
 
-def megagray(img):
-    # return (
-    #     2 * img[:, :, 0]
-    #     + 0.89772363 * img[:, :, 1]
-    #     - 1.39906391 * img[:, :, 2]
-    #     - 0.49865972 * img[:, :, 3]
-    # )
-    return (
-        0.11185456 * img[:, :, 0]
-        - 0.20724195 * img[:, :, 1]
-        + 0.03658154 * img[:, :, 2]
-        + 0.0481187 * img[:, :, 3]
-    ) / (
-        0.07445932 * img[:, :, 0]
-        + 0.37339248 * img[:, :, 1]
-        - 0.3639714 * img[:, :, 2]
-        + 0.99997221 * img[:, :, 3]
-        + 0.25624726
-    )
+def sobel(gray: np.ndarray) -> np.ndarray:
+    """
+    Apply the Sobel operator to detect edges in the image.
 
+    Args:
+        gray (numpy.ndarray): Input grayscale image.
 
-def sobel(gray):
+    Returns:
+        numpy.ndarray: Image with edges detected by the Sobel operator.
+    """
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
     sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
     return np.sqrt(sobelx**2 + sobely**2)
 
 
-def final_uint8(image, channel):
+def final_uint8(image: np.ndarray, channel: int) -> np.ndarray:
+    """
+    Generate a final uint8 image by applying Sobel operator and scaling.
+
+    Args:
+        image (numpy.ndarray): Input image.
+        channel (int): Channel.
+
+    Returns:
+        numpy.ndarray: Final uint8 image.
+    """
     red = image[:, :, 0]
     nir = image[:, :, 3]
     mask = 1 - 0.57 * (np.clip(red / 4000, 1, 2) - 1)
@@ -413,13 +447,13 @@ def final_uint8(image, channel):
     # good2 = scale_image_percentile(sobel(nir_equalized), 30, 99.5).reshape(
     #    image.shape[0], image.shape[1], 1
     # )
-    # megasobel = sobel(image[:, :, 0]) + sobel(image[:, :, 3])
-    # megacontours = scale_image_percentile(megasobel, 2, 99.5).reshape(
+    # megasobel = sobel(gray) + sobel(red) + sobel(gray - red)
+    # megacontours = scale_image_percentile(megasobel, 30, 99.5).reshape(
     #     image.shape[0], image.shape[1], 1
     # )
 
     contours = scale_image_percentile(
-        sobel(gray if channel == 3 else gray - red), 30, 99.5
+        sobel(gray if channel == 3 else gray - red), 35, 99.5
     ).reshape(image.shape[0], image.shape[1], 1)
 
     return contours
