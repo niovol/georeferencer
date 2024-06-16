@@ -7,10 +7,10 @@
 
 ## Установка
 
-1. Клонируйте репозиторий:
+1. Клонируйте репозиторий с субмодулями:
 
     ```bash
-    git clone https://github.com/niovol/georeferencer
+    git clone https://github.com/niovol/georeferencer --recurse-submodules
     cd <repository_directory>
     ```
 
@@ -40,3 +40,14 @@
     ```
 
 Сервис будет доступен по адресу `http://localhost:8000`.
+
+## В случае проблем со стороны GitHub
+
+Проект имеет внешнюю зависимость https://github.com/magicleap/SuperGluePretrainedNetwork/ в виде субмодуля
+По какой-то причине этот файлы с этого проекта не всегда получается клонировать.
+Если по какой-то причине не получается клонировать репозиторий, то есть следующие варианты решения:
+
+1. Можете скачать с `Прототипа решения` с Яндекс Диска: https://disk.yandex.ru/d/SeeYQ8Zcr6mELQ
+
+2. Можете скачать с GitHub проект https://github.com/niovol/georeferencer в виде .zip, и отдельно скачать субмодуль https://github.com/magicleap/SuperGluePretrainedNetwork
+    Этот субмодуль необходимо разместить в папке `src/superglue`
