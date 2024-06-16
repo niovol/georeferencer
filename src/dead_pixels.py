@@ -118,9 +118,9 @@ def local_regression(image, row, col, channel, dead_mask, window_size=9):
                 x.append(image[r, c, ~dead_mask[row, col]])
                 y.append(image[r, c, channel])
 
-    if len(y) > 0:
-        x = np.array(x)
-        y = np.array(y)
+    x = np.array(x)
+    y = np.array(y)
+    if x.shape[1] > 0:
         reg = LinearRegression().fit(x, y)
         x_pred = image[row, col, ~dead_mask[row, col]].reshape(1, -1)
         return np.uint16(np.clip(reg.predict(x_pred)[0], 1, 65535))
