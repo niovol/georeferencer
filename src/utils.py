@@ -15,14 +15,16 @@ from rasterio.warp import Resampling, reproject
 from rasterio.windows import Window
 
 
-def scale_image_percentile(image, low_percentile=2, high_percentile=98):
+def scale_image_percentile(
+    image, low_percentile: float = 2, high_percentile: float = 98
+):
     """
     Scale the image based on the 2nd and 98th percentiles, excluding zero values.
 
     Args:
         image (numpy.ndarray): Input image.
-        low_percentile (int): Lower percentile for scaling.
-        high_percentile (int): Upper percentile for scaling.
+        low_percentile (f;pat): Lower percentile for scaling.
+        high_percentile (float): Upper percentile for scaling.
 
     Returns:
         numpy.ndarray: Scaled image.
@@ -274,7 +276,7 @@ def downscale(
     output_path: str,
     height: int,
     width: int,
-    channels: Tuple[int],
+    channels: tuple,
 ) -> None:
     """
     Downscale a raster image to the specified height and width.
@@ -311,55 +313,11 @@ def downscale(
                 )
 
 
-def equalize_hist_16bit_exclude_zero(img: np.ndarray) -> np.ndarray:
-    """
-    Equalizes the histogram of a 16-bit image, excluding zero values.
-
-    Args:
-        img (numpy.ndarray): Input 16-bit image.
-
-    Returns:
-        numpy.ndarray: Histogram-equalized image.
-    """
-    img_hist_eq = np.zeros_like(img)
-    for i in range(img.shape[2]):
-        channel = img[:, :, i]
-        mask = channel > 0  # Create a mask to exclude zero values
-        hist, _ = np.histogram(channel[mask].flatten(), 65535, [1, 65536])
-        cdf = hist.cumsum()
-        cdf = (cdf - cdf.min()) * 65535 / (cdf.max() - cdf.min())  # Normalize to 16-bit
-        cdf = np.insert(cdf, 0, 0)  # Insert 0 for the zero value
-        cdf = cdf.astype(np.uint16)
-        img_hist_eq[:, :, i] = cdf[channel]
-    return img_hist_eq
-
-
-def equalize_hist(img: np.ndarray) -> np.ndarray:
-    """
-    Equalizes the histogram of an image and applies CLAHE.
-
-    Args:
-        img (numpy.ndarray): Input image.
-
-    Returns:
-        numpy.ndarray: CLAHE applied histogram-equalized image.
-    """
-    img_hist_eq = equalize_hist_16bit_exclude_zero(img) / 65535
-    img_hist_eq_8bit = (img_hist_eq * 254 + 1).astype("uint8")
-
-    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(16, 16))
-    img_clahe = np.zeros_like(img_hist_eq_8bit)
-    for i in range(img.shape[2]):
-        img_clahe[:, :, i] = clahe.apply(img_hist_eq_8bit[:, :, i])
-
-    return img_clahe
-
-
 def slice_geotiff(
     input_path: str,
     output_dir: str,
+    tile_size: Tuple[int, int],
     grid_size: Tuple[int, int],
-    overlap: Tuple[int, int] = (0, 0),
     margins: Tuple[int, int, int, int] = (0, 0, 0, 0),
 ) -> None:
     """
@@ -368,9 +326,8 @@ def slice_geotiff(
     Args:
         input_path (str): Path to the input GeoTIFF file.
         output_dir (str): Directory to save the sliced tiles.
+        tile_size (tuple): Size of each tile in the form (tile_width, tile_height).
         grid_size (tuple): Number of tiles in the form (columns, rows).
-        overlap (tuple, optional): Overlap between tiles in the form
-            (x_overlap, y_overlap).
         margins (tuple, optional): Margins to exclude from slicing in the form
             (left, right, top, bottom).
 
@@ -381,7 +338,6 @@ def slice_geotiff(
         os.makedirs(output_dir)
 
     left_margin, right_margin, top_margin, bottom_margin = margins
-    x_overlap, y_overlap = overlap
 
     with rasterio.open(input_path) as src:
         width = src.width
@@ -390,8 +346,10 @@ def slice_geotiff(
         cropped_width = width - left_margin - right_margin
         cropped_height = height - top_margin - bottom_margin
 
-        tile_width = (cropped_width + (grid_size[0] - 1) * x_overlap) // grid_size[0]
-        tile_height = (cropped_height + (grid_size[1] - 1) * y_overlap) // grid_size[1]
+        tile_width, tile_height = tile_size
+
+        x_overlap = (tile_width * grid_size[0] - cropped_width) // (grid_size[0] - 1)
+        y_overlap = (tile_height * grid_size[1] - cropped_height) // (grid_size[1] - 1)
 
         for i in range(grid_size[1]):
             for j in range(grid_size[0]):
@@ -449,16 +407,6 @@ def final_uint8(image: np.ndarray, image_type: str) -> np.ndarray:
 
     nodata = np.where(gray > 64000, True, np.where(gray == 0, True, False))
     gray[nodata] = np.mean(gray[~nodata])
-    # nir_equalized = np.squeeze(
-    #    equalize_hist(nir.reshape(nir.shape[0], nir.shape[1], 1))
-    # )
-    # good2 = scale_image_percentile(sobel(nir_equalized), 30, 99.5).reshape(
-    #    image.shape[0], image.shape[1], 1
-    # )
-    # megasobel = sobel(gray) + sobel(red) + sobel(gray - red)
-    # megacontours = scale_image_percentile(megasobel, 30, 99.5).reshape(
-    #     image.shape[0], image.shape[1], 1
-    # )
 
     contours = scale_image_percentile(
         sobel(gray if image_type == "layout" else gray - red), 35, 99.5

@@ -8,4 +8,5 @@ rasterio
 torch
 scikit-learn
 scipy
+segmentation-models-pytorch
 uvicorn

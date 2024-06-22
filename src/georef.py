@@ -14,7 +14,8 @@ from affine import Affine
 from .superglue.models.superglue import SuperGlue
 from .superglue.models.superpoint import SuperPoint
 from .superglue.models.utils import frame2tensor
-from .utils import downscale, final_uint8, load_geotiff, slice_geotiff
+from .utils import downscale, load_geotiff, slice_geotiff
+from .edges_infer import infer_edges, load_edges_model
 
 
 def save_keypoints(keypoints: dict, keypoints_path: str) -> None:
@@ -56,16 +57,25 @@ def prepare_layout(layout_path: str) -> list:
     """
     os.makedirs("cache/layout_downscale", exist_ok=True)
 
+    grid_type = "mod"
+    grid = {
+        "base": {"nx": 8, "ny": 5, "tile_size_x": 340, "tile_size_y": 400},
+        "mod": {"nx": 4, "ny": 5, "tile_size_x": 480, "tile_size_y": 384},
+    }
+
     filename_downscale = f"cache/layout_downscale/{os.path.basename(layout_path)}"
     if not os.path.exists(filename_downscale):
-        downscale(layout_path, filename_downscale, 1600, 1600, (0, 3))
+        downscale(layout_path, filename_downscale, 1600, 1600, (0, 1, 2, 3))
         slice_geotiff(
-            filename_downscale, "cache/layout_downscale_crops", (8, 5), (160, 100)
+            filename_downscale,
+            "cache/layout_downscale_crops",
+            (grid[grid_type]["tile_size_x"], grid[grid_type]["tile_size_y"]),
+            (grid[grid_type]["nx"], grid[grid_type]["ny"]),
         )
 
     layout_crop_paths = []
-    for i in range(5):
-        for j in range(8):
+    for i in range(grid[grid_type]["ny"]):
+        for j in range(grid[grid_type]["nx"]):
             filename = os.path.basename(layout_path).replace(".tif", f"_{i}_{j}.tif")
             layout_crop_path = f"cache/layout_downscale_crops/{filename}"
             layout_crop_paths.append(layout_crop_path)
@@ -140,27 +150,21 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
     superpoint_config = {
         "nms_radius": 4,
         "keypoint_threshold": 0.015,
-        "max_keypoints": 2048,
+        "max_keypoints": -1,
     }
     superglue_config = {
         "weights": "outdoor",
         "sinkhorn_iterations": 20,
-        "match_threshold": 0.5,
+        "match_threshold": 0.7,
         "descriptor_dim": 256,
     }
     superpoint = SuperPoint(superpoint_config).eval().to("cpu")
     superglue = SuperGlue(superglue_config).eval().to("cpu")
 
+    edges_model = load_edges_model("resnet18", "models/edges.pth")
+
     all_matches = []
     for layout_crop_path in layout_crop_paths:
-        loaded = load_geotiff(layout_crop_path, layout="hwc")
-        inp0 = frame2tensor(
-            np.squeeze(final_uint8(loaded["data"], "layout")).astype("float32"), "cpu"
-        )
-        inp1 = frame2tensor(
-            np.squeeze(final_uint8(crop_image, "crop")).astype("float32"), "cpu"
-        )
-
         keypoint0_path = os.path.join(
             keypoints_dir, os.path.basename(layout_crop_path).replace(".tif", ".pkl")
         )
@@ -168,26 +172,35 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
             keypoints_dir, os.path.basename(crop_path).replace(".tif", ".pkl")
         )
 
+        loaded_layout = load_geotiff(layout_crop_path, layout="hwc")
+
         if os.path.exists(keypoint0_path):
             pred0 = load_keypoints(keypoint0_path)
         else:
+            # im0 = final_uint8(loaded_layout["data"], "layout")).astype("float32")
+            im0 = infer_edges(edges_model, loaded_layout["data"]).astype("float32")
+            inp0 = frame2tensor(np.squeeze(im0), "cpu")
             pred0 = {k + "0": v for k, v in superpoint({"image": inp0}).items()}
+            pred0["image0"] = inp0
             save_keypoints(pred0, keypoint0_path)
 
         if os.path.exists(keypoint1_path):
             pred1 = load_keypoints(keypoint1_path)
         else:
+            # im1 = final_uint8(crop_image, "crop").astype("float32")
+            im1 = infer_edges(edges_model, crop_image).astype("float32")
+            inp1 = frame2tensor(np.squeeze(im1), "cpu")
             pred1 = {k + "1": v for k, v in superpoint({"image": inp1}).items()}
+            pred1["image1"] = inp1
             save_keypoints(pred1, keypoint1_path)
 
         pred = {**pred0, **pred1}
-        data = {"image0": inp0, "image1": inp1, **pred}
 
-        for k in data:
-            if isinstance(data[k], (list, tuple)):
-                data[k] = torch.stack(data[k])
+        for k in pred:
+            if isinstance(pred[k], (list, tuple)):
+                pred[k] = torch.stack(pred[k])
 
-        pred = {**pred, **superglue(data)}
+        pred = {**pred, **superglue(pred)}
         pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
 
         kpts0, kpts1 = pred["keypoints0"], pred["keypoints1"]
@@ -209,7 +222,7 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
                 "score": score,
                 "layout": layout_points,
                 "crop": crop_points,
-                "meta": loaded["meta"],
+                "meta": loaded_layout["meta"],
             }
         )
 
