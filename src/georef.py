@@ -163,17 +163,26 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
 
     edges_model = load_edges_model("resnet18", "models/edges.pth")
 
+    keypoint1_path = os.path.join(
+        keypoints_dir, os.path.basename(crop_path).replace(".tif", ".pkl")
+    )
+    if os.path.exists(keypoint1_path):
+        pred1 = load_keypoints(keypoint1_path)
+    else:
+        # im1 = final_uint8(crop_image, "crop").astype("float32")
+        im1 = infer_edges(edges_model, crop_image).astype("float32")
+        inp1 = frame2tensor(np.squeeze(im1), "cpu")
+        pred1 = {k + "1": v for k, v in superpoint({"image": inp1}).items()}
+        pred1["image1"] = inp1
+        save_keypoints(pred1, keypoint1_path)
+
     all_matches = []
     for layout_crop_path in layout_crop_paths:
+        loaded_layout = load_geotiff(layout_crop_path, layout="hwc")
+
         keypoint0_path = os.path.join(
             keypoints_dir, os.path.basename(layout_crop_path).replace(".tif", ".pkl")
         )
-        keypoint1_path = os.path.join(
-            keypoints_dir, os.path.basename(crop_path).replace(".tif", ".pkl")
-        )
-
-        loaded_layout = load_geotiff(layout_crop_path, layout="hwc")
-
         if os.path.exists(keypoint0_path):
             pred0 = load_keypoints(keypoint0_path)
         else:
@@ -183,16 +192,6 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
             pred0 = {k + "0": v for k, v in superpoint({"image": inp0}).items()}
             pred0["image0"] = inp0
             save_keypoints(pred0, keypoint0_path)
-
-        if os.path.exists(keypoint1_path):
-            pred1 = load_keypoints(keypoint1_path)
-        else:
-            # im1 = final_uint8(crop_image, "crop").astype("float32")
-            im1 = infer_edges(edges_model, crop_image).astype("float32")
-            inp1 = frame2tensor(np.squeeze(im1), "cpu")
-            pred1 = {k + "1": v for k, v in superpoint({"image": inp1}).items()}
-            pred1["image1"] = inp1
-            save_keypoints(pred1, keypoint1_path)
 
         pred = {**pred0, **pred1}
 
@@ -232,7 +231,6 @@ def align(layout_crop_paths: list, crop_image: np.ndarray, crop_path: str) -> di
         np.array(item_chosen["crop"]),
         np.array(item_chosen["layout"]),
         method=cv2.USAC_MAGSAC,
-        ransacReprojThreshold=5.0,
     )
 
     h, w = crop_image.shape[:2]
